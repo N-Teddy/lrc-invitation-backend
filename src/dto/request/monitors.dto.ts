@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
     IsString,
     IsEmail,
@@ -7,66 +7,100 @@ import {
     IsBoolean,
     IsNumber,
     Min,
+    MinLength,
+    Matches,
 } from 'class-validator';
 import { Role } from '../../common/enums/role.enum';
 import { Region } from '../../common/enums/region.enum';
 
 export class CreateMonitorDto {
-    @ApiProperty({ description: 'Monitor name', example: 'Jane Smith' })
+    @ApiProperty({ example: 'John Doe' })
     @IsString()
-    name: string;
+    fullName: string;
 
-    @ApiProperty({ description: 'Monitor email', example: 'jane@church.org' })
+    @ApiProperty({ example: 'john.doe@example.com' })
     @IsEmail()
     email: string;
 
-    @ApiProperty({
-        description: 'Phone number',
-        example: '+237123456789',
-        required: false,
-    })
+    @ApiProperty({ example: 'SecurePass123!' })
     @IsString()
-    @IsOptional()
-    phoneNumber?: string;
+    @MinLength(8)
+    @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+        message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+    })
+    password: string;
 
-    @ApiProperty({ description: 'Monitor role', enum: Role })
+    @ApiProperty({ example: '+237612345678' })
+    @IsString()
+    phoneNumber: string;
+
+    @ApiProperty({ enum: Role, example: Role.MONITOR })
     @IsEnum(Role)
     role: Role;
 
-    @ApiProperty({ description: 'Assigned town', enum: Region })
+    @ApiProperty({ enum: Region, example: Region.YAOUNDE })
     @IsEnum(Region)
     assignedTown: Region;
+
+    @ApiPropertyOptional({ example: true })
+    @IsOptional()
+    @IsBoolean()
+    yearlyFeePaid?: boolean;
+
+    @ApiPropertyOptional({ example: 5000 })
+    @IsOptional()
+    @IsNumber()
+    yearlyFeeAmount?: number;
 }
 
 export class UpdateMonitorDto {
-    @ApiProperty({ description: 'Monitor name', required: false })
-    @IsString()
+    @ApiPropertyOptional({ example: 'John Doe' })
     @IsOptional()
-    name?: string;
+    @IsString()
+    fullName?: string;
 
-    @ApiProperty({ description: 'Phone number', required: false })
-    @IsString()
+    @ApiPropertyOptional({ example: 'john.doe@example.com' })
     @IsOptional()
+    @IsEmail()
+    email?: string;
+
+    @ApiPropertyOptional({ example: '+237612345678' })
+    @IsOptional()
+    @IsString()
     phoneNumber?: string;
 
-    @ApiProperty({ description: 'Monitor role', enum: Role, required: false })
-    @IsEnum(Role)
+    @ApiPropertyOptional({ enum: Role, example: Role.MONITOR })
     @IsOptional()
+    @IsEnum(Role)
     role?: Role;
 
-    @ApiProperty({ description: 'Assigned town', enum: Region, required: false })
+    @ApiPropertyOptional({ enum: Region, example: Region.YAOUNDE })
+    @IsOptional()
     @IsEnum(Region)
-    @IsOptional()
     assignedTown?: Region;
+}
 
-    @ApiProperty({ description: 'Yearly fee paid status', required: false })
+export class UpdateMonitorPasswordDto {
+    @ApiProperty({ example: 'CurrentPass123!' })
+    @IsString()
+    currentPassword: string;
+
+    @ApiProperty({ example: 'NewSecurePass123!' })
+    @IsString()
+    @MinLength(8)
+    @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+        message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+    })
+    newPassword: string;
+}
+
+export class UpdateYearlyFeeDto {
+    @ApiProperty({ example: true })
     @IsBoolean()
-    @IsOptional()
-    yearlyFeePaid?: boolean;
+    paid: boolean;
 
-    @ApiProperty({ description: 'Yearly fee amount', required: false })
-    @IsNumber()
-    @Min(0)
+    @ApiPropertyOptional({ example: 5000 })
     @IsOptional()
-    yearlyFeeAmount?: number;
+    @IsNumber()
+    amount?: number;
 }

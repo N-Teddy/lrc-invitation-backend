@@ -4,14 +4,11 @@ import {
     Column,
     CreateDateColumn,
     UpdateDateColumn,
-    ManyToOne,
     OneToMany,
-    JoinColumn,
 } from 'typeorm';
 import { ActivityType } from '../common/enums/activity-type.enum';
 import { Region } from '../common/enums/region.enum';
 import { AgeGroup } from '../common/enums/age-group.enum';
-import { Monitor } from './monitor.entity';
 import { Attendance } from './attendance.entity';
 import { Invitation } from './invitation.entity';
 

@@ -6,6 +6,9 @@ import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
 import appConfig from './config/app.config';
 import { AuthModule } from './modules/auth/auth.module';
+import { MonitorsModule } from './modules/monitors/monitors.module';
+import { ChildrenModule } from './modules/children/children.module';
+import { ActivitiesModule } from './modules/activities/activities.module';
 
 @Module({
   imports: [
@@ -28,7 +31,9 @@ import { AuthModule } from './modules/auth/auth.module';
 
     // Feature modules
     AuthModule,
-    // We'll add more modules progressively
+    MonitorsModule,
+    ChildrenModule,
+    ActivitiesModule,
   ],
 })
 export class AppModule { }
