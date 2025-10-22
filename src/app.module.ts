@@ -9,6 +9,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { MonitorsModule } from './modules/monitors/monitors.module';
 import { ChildrenModule } from './modules/children/children.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { ActivitiesModule } from './modules/activities/activities.module';
     MonitorsModule,
     ChildrenModule,
     ActivitiesModule,
+    AttendanceModule,
+    InvitationsModule,
   ],
 })
 export class AppModule { }
