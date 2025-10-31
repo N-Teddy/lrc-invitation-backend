@@ -8,8 +8,9 @@ import {
 } from 'typeorm';
 import { Role } from '../common/enums/role.enum';
 import { Region } from '../common/enums/region.enum';
-import { Activity } from './activity.entity';
 import { Attendance } from './attendance.entity';
+import { InvitationRecipient } from './invitation-recipient.entity';
+import { InvitationLog } from './invitation-log.entity';
 
 @Entity('monitors')
 export class Monitor {
@@ -39,10 +40,13 @@ export class Monitor {
         type: 'enum',
         enum: Region,
     })
-    assignedTown: Region;
+    region: Region;
 
     @Column({ type: 'boolean', default: false })
     yearlyFeePaid: boolean;
+
+    @Column({ type: 'boolean', default: true })
+    active: boolean;
 
     @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
     yearlyFeeAmount: number;
@@ -56,4 +60,10 @@ export class Monitor {
     // Relations
     @OneToMany(() => Attendance, (attendance) => attendance.monitor)
     attendanceRecords: Attendance[];
+
+    @OneToMany(() => InvitationRecipient, (recipient) => recipient.monitor)
+    invitationRecipients: InvitationRecipient[];
+
+    @OneToMany(() => InvitationLog, (log) => log.sentToMonitor)
+    invitationLogs: InvitationLog[];
 }

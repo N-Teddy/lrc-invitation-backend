@@ -111,14 +111,6 @@ export class ActivitiesController {
         return this.activitiesService.findUpcoming(region, ageGroup);
     }
 
-    @Get('by-monitor/:monitorId')
-    @Roles(Role.DEV, Role.ADMIN, Role.CHIEF_MONITOR, Role.MONITOR)
-    @ApiOperation({ summary: 'Get activities by monitor' })
-    @ApiResponse({ status: 200, description: 'List of activities' })
-    findByMonitor(@Param('monitorId', ParseIntPipe) monitorId: number) {
-        return this.activitiesService.findByMonitor(monitorId);
-    }
-
     @Get('date-range')
     @Roles(Role.DEV, Role.ADMIN, Role.CHIEF_MONITOR, Role.MONITOR)
     @ApiOperation({ summary: 'Get activities by date range' })

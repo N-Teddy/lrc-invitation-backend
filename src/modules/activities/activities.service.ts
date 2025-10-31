@@ -226,13 +226,6 @@ export class ActivitiesService {
             .getMany();
     }
 
-    async findByMonitor(monitorId: number): Promise<Activity[]> {
-        return this.activitiesRepository.find({
-            where: { monitorId },
-            order: { date: 'DESC', time: 'ASC' },
-        });
-    }
-
     async findByDateRange(startDate: string, endDate: string): Promise<Activity[]> {
         return this.activitiesRepository.find({
             where: {

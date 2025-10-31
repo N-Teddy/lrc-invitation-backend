@@ -9,7 +9,6 @@ import {
 import { Region } from '../common/enums/region.enum';
 import { AgeGroup } from '../common/enums/age-group.enum';
 import { Attendance } from './attendance.entity';
-import { Invitation } from './invitation.entity';
 
 @Entity('children')
 export class Child {
@@ -20,7 +19,7 @@ export class Child {
     name: string;
 
     @Column({ type: 'date' })
-    birthDate: Date;
+    dateOfBirth: Date;
 
     @Column({
         type: 'enum',
@@ -28,11 +27,20 @@ export class Child {
     })
     region: Region;
 
+    @Column({ type: 'varchar', length: 100 })
+    currentGroup: string; // e.g., "Pre-School", "Primary 1-3", "Primary 4-6", "Teens"
+
+    @Column({ type: 'boolean', default: true })
+    active: boolean;
+
     @Column({ type: 'varchar', length: 255, nullable: true })
     parentName: string;
 
     @Column({ type: 'varchar', length: 50, nullable: true })
     parentContact: string;
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    address: string;
 
     @CreateDateColumn({ type: 'timestamp' })
     createdAt: Date;
@@ -44,13 +52,10 @@ export class Child {
     @OneToMany(() => Attendance, (attendance) => attendance.child)
     attendanceRecords: Attendance[];
 
-    @OneToMany(() => Invitation, (invitation) => invitation.child)
-    invitations: Invitation[];
-
     // Computed properties (not stored in DB)
     get age(): number {
         const today = new Date();
-        const birthDate = new Date(this.birthDate);
+        const birthDate = new Date(this.dateOfBirth);
         let age = today.getFullYear() - birthDate.getFullYear();
         const monthDiff = today.getMonth() - birthDate.getMonth();
 
@@ -62,6 +67,15 @@ export class Child {
         }
 
         return age;
+    }
+
+    get ageInMonths(): number {
+        const today = new Date();
+        const birthDate = new Date(this.dateOfBirth);
+        return (
+            (today.getFullYear() - birthDate.getFullYear()) * 12 +
+            (today.getMonth() - birthDate.getMonth())
+        );
     }
 
     get ageGroup(): AgeGroup {

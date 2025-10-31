@@ -47,7 +47,7 @@ export class AuthService {
             name,
             phoneNumber,
             role,
-            assignedTown,
+            region: assignedTown,
         });
 
         await this.monitorRepository.save(monitor);
@@ -62,7 +62,7 @@ export class AuthService {
                 name: monitor.name,
                 email: monitor.email,
                 role: monitor.role,
-                assignedTown: monitor.assignedTown,
+                assignedTown: monitor.region,
             },
         };
     }
@@ -99,7 +99,7 @@ export class AuthService {
                 name: monitor.name,
                 email: monitor.email,
                 role: monitor.role,
-                assignedTown: monitor.assignedTown,
+                assignedTown: monitor.region,
             },
         };
     }
@@ -127,7 +127,7 @@ export class AuthService {
             sub: monitor.id,
             email: monitor.email,
             role: monitor.role,
-            assignedTown: monitor.assignedTown,
+            assignedTown: monitor.region,
         };
 
         return this.jwtService.sign(payload);

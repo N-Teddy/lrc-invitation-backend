@@ -8,9 +8,9 @@ import {
 } from 'typeorm';
 import { ActivityType } from '../common/enums/activity-type.enum';
 import { Region } from '../common/enums/region.enum';
-import { AgeGroup } from '../common/enums/age-group.enum';
 import { Attendance } from './attendance.entity';
-import { Invitation } from './invitation.entity';
+import { InvitationRecipient } from './invitation-recipient.entity';
+import { InvitationLog } from './invitation-log.entity';
 
 @Entity('activities')
 export class Activity {
@@ -38,12 +38,8 @@ export class Activity {
     })
     region: Region;
 
-    @Column({
-        type: 'enum',
-        enum: AgeGroup,
-        nullable: true,
-    })
-    targetAgeGroup: AgeGroup;
+    @Column({ type: 'simple-array' })
+    allowedGroups: string[]; // e.g., ["Pre-School", "Primary 1-3"]
 
     @Column({ type: 'text', nullable: true })
     description: string;
@@ -52,7 +48,7 @@ export class Activity {
     location: string;
 
     @Column({ type: 'int' })
-    monitorId: number;
+    createdByMonitorId: number;
 
     @CreateDateColumn({ type: 'timestamp' })
     createdAt: Date;
@@ -60,9 +56,13 @@ export class Activity {
     @UpdateDateColumn({ type: 'timestamp' })
     updatedAt: Date;
 
+    // Relations
     @OneToMany(() => Attendance, (attendance) => attendance.activity)
     attendanceRecords: Attendance[];
 
-    @OneToMany(() => Invitation, (invitation) => invitation.activity)
-    invitations: Invitation[];
+    @OneToMany(() => InvitationRecipient, (recipient) => recipient.activity)
+    invitationRecipients: InvitationRecipient[];
+
+    @OneToMany(() => InvitationLog, (log) => log.activity)
+    invitationLogs: InvitationLog[];
 }
