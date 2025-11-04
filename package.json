@@ -11,7 +11,6 @@
     "start": "nest start",
     "git-push": "bash scripts/git-push.sh",
     "start:dev": "nest start --watch",
-    "git-push":	"bash scripts/git-push.sh",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
