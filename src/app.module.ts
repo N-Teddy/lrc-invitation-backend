@@ -10,6 +10,7 @@ import { MediaModule } from './media/media.module';
 import { GroupsModule } from './groups/groups.module';
 import { ActivitiesModule } from './activities/activities.module';
 import { AttendanceModule } from './attendance/attendance.module';
+import { ReportingModule } from './reporting/reporting.module';
 
 @Module({
     imports: [
@@ -31,6 +32,7 @@ import { AttendanceModule } from './attendance/attendance.module';
         GroupsModule,
         ActivitiesModule,
         AttendanceModule,
+        ReportingModule,
     ],
     controllers: [AppController],
     providers: [AppService],

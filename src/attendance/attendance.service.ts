@@ -14,6 +14,7 @@ import { DEFAULT_AGE_TO_GROUP_MAPPING, AgeBand } from '../common/constants/group
 import { computeAgeYears } from '../common/utils/groups.util';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
 import { isEligibleChildForActivity } from '../common/utils/attendance-eligibility.util';
+import { ReportingService } from '../reporting/reporting.service';
 
 @Injectable()
 export class AttendanceService {
@@ -26,6 +27,7 @@ export class AttendanceService {
         @InjectModel(ChildProfile.name)
         private readonly childProfileModel: Model<ChildProfileDocument>,
         @InjectModel(Settings.name) private readonly settingsModel: Model<SettingsDocument>,
+        private readonly reportingService: ReportingService,
     ) {}
 
     async getByActivityId(activityId: string) {
@@ -168,6 +170,12 @@ export class AttendanceService {
 
         if (!updated) {
             throw new NotFoundException('Attendance not found');
+        }
+
+        try {
+            await this.reportingService.notifySuperMonitorsAfterAttendance(activityId);
+        } catch {
+            // Non-blocking: attendance save must succeed even if notification delivery fails.
         }
 
         return updated;

@@ -7,6 +7,7 @@ import { Activity, ActivitySchema } from '../schema/activity.schema';
 import { User, UserSchema } from '../schema/user.schema';
 import { ChildProfile, ChildProfileSchema } from '../schema/child-profile.schema';
 import { Settings, SettingsSchema } from '../schema/settings.schema';
+import { ReportingModule } from '../reporting/reporting.module';
 
 @Module({
     imports: [
@@ -17,6 +18,7 @@ import { Settings, SettingsSchema } from '../schema/settings.schema';
             { name: ChildProfile.name, schema: ChildProfileSchema },
             { name: Settings.name, schema: SettingsSchema },
         ]),
+        ReportingModule,
     ],
     controllers: [AttendanceController],
     providers: [AttendanceService],
