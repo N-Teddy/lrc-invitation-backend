@@ -29,7 +29,31 @@
 ## Project setup
 
 ```bash
+$ pnpm -v   # expect pnpm 8.x
 $ pnpm install
+```
+
+Node version:
+
+```bash
+# uses backend/.nvmrc
+$ nvm use
+```
+
+Copy environment variables:
+
+```bash
+cp .env.example .env
+# then fill in MongoDB, WhatsApp, storage, and secrets. TIMEZONE should remain Africa/Douala.
+```
+
+Code quality helpers:
+
+```bash
+pnpm run lint       # eslint check
+pnpm run lint:fix   # eslint with fixes
+pnpm run format     # prettier write
+pnpm run format:check
 ```
 
 ## Compile and run the project
