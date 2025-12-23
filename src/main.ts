@@ -3,6 +3,8 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import * as compression from 'compression';
+import * as express from 'express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -25,6 +27,7 @@ async function bootstrap() {
             threshold: 0,
         }),
     );
+    app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
     app.enableCors({
         origin: process.env.CORS_ORIGIN?.split(',') ?? '*',
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
@@ -66,6 +69,30 @@ async function bootstrap() {
             operationsSorter: 'alpha',
         },
         customSiteTitle: 'LRC-Jeunesse API Documentation',
+        customCss: `
+            html, body { background: #0b1220; }
+            .swagger-ui { color: #e5e7eb; }
+            .swagger-ui .topbar { background-color: #111827; }
+            .swagger-ui .topbar a { color: #e5e7eb; }
+            .swagger-ui .info .title, .swagger-ui .info p, .swagger-ui .info li { color: #e5e7eb; }
+            .swagger-ui .scheme-container { background: #0f172a; box-shadow: none; }
+            .swagger-ui .opblock { background: #0f172a; border-color: #1f2937; }
+            .swagger-ui .opblock .opblock-summary { border-color: #1f2937; }
+            .swagger-ui .opblock .opblock-summary-description,
+            .swagger-ui .opblock .opblock-summary-path,
+            .swagger-ui .opblock .opblock-summary-method { color: #e5e7eb; }
+            .swagger-ui .model-box, .swagger-ui .model { color: #e5e7eb; }
+            .swagger-ui .parameters-container,
+            .swagger-ui .responses-inner,
+            .swagger-ui .opblock-description-wrapper,
+            .swagger-ui .opblock-external-docs-wrapper,
+            .swagger-ui .opblock-body pre { background: #0b1220; color: #e5e7eb; }
+            .swagger-ui input[type="text"], .swagger-ui textarea { background: #0b1220; color: #e5e7eb; border-color: #374151; }
+            .swagger-ui .btn { background: #111827; color: #e5e7eb; border-color: #374151; }
+            .swagger-ui .btn:hover { background: #1f2937; }
+            .swagger-ui .tab li button.tablinks { color: #e5e7eb; }
+            .swagger-ui .response-col_status { color: #e5e7eb; }
+        `,
     });
 
     app.enableShutdownHooks();

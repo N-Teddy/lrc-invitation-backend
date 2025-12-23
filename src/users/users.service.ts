@@ -2,32 +2,32 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../schema/user.schema';
-import { CreateUserDto, UpdateUserDto } from '../dtos/request/user.dto';
+import { CreateUserData, UpdateUserData } from '../common/interfaces/user-data.interface';
 
 @Injectable()
 export class UsersService {
     constructor(@InjectModel(User.name) private readonly userModel: Model<UserDocument>) {}
 
-    async create(dto: CreateUserDto): Promise<Record<string, any>> {
+    async create(data: CreateUserData): Promise<Record<string, any>> {
         const user = new this.userModel({
-            fullName: dto.fullName,
-            role: dto.role,
-            monitorLevel: dto.monitorLevel,
-            email: dto.email?.toLowerCase(),
-            googleId: dto.googleId,
-            googleEmail: dto.googleEmail,
-            googleLinkedAt: dto.googleLinkedAt,
-            dateOfBirth: dto.dateOfBirth,
-            originTown: dto.originTown,
-            preferredLanguage: dto.preferredLanguage,
-            lifecycleStatus: dto.lifecycleStatus,
-            registrationPendingApproval: dto.registrationPendingApproval,
-            magicToken: dto.magicToken,
-            magicExpiresAt: dto.magicExpiresAt,
-            whatsApp: dto.whatsAppPhoneE164
+            fullName: data.fullName,
+            role: data.role,
+            monitorLevel: data.monitorLevel,
+            email: data.email?.toLowerCase(),
+            googleId: data.googleId,
+            googleEmail: data.googleEmail,
+            googleLinkedAt: data.googleLinkedAt,
+            dateOfBirth: data.dateOfBirth,
+            originTown: data.originTown,
+            preferredLanguage: data.preferredLanguage,
+            lifecycleStatus: data.lifecycleStatus,
+            registrationPendingApproval: data.registrationPendingApproval,
+            magicToken: data.magicToken,
+            magicExpiresAt: data.magicExpiresAt,
+            whatsApp: data.whatsAppPhoneE164
                 ? {
-                      phoneE164: dto.whatsAppPhoneE164,
-                      optIn: dto.whatsAppOptIn ?? true,
+                      phoneE164: data.whatsAppPhoneE164,
+                      optIn: data.whatsAppOptIn ?? true,
                   }
                 : undefined,
         });
@@ -86,23 +86,35 @@ export class UsersService {
         return user;
     }
 
-    async update(id: string, dto: UpdateUserDto): Promise<Record<string, any>> {
+    async update(id: string, data: UpdateUserData): Promise<Record<string, any>> {
         const user = await this.userModel
             .findByIdAndUpdate(
                 id,
                 {
                     $set: {
-                        ...dto,
-                        whatsApp: dto.whatsAppPhoneE164
+                        ...data,
+                        email: data.email?.toLowerCase(),
+                        whatsApp: data.whatsAppPhoneE164
                             ? {
-                                  phoneE164: dto.whatsAppPhoneE164,
-                                  optIn: dto.whatsAppOptIn ?? true,
+                                  phoneE164: data.whatsAppPhoneE164,
+                                  optIn: data.whatsAppOptIn ?? true,
                               }
                             : undefined,
                     },
                 },
                 { new: true },
             )
+            .lean()
+            .exec();
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+        return this.normalizeUser(user);
+    }
+
+    async updateProfileImage(userId: string, profileImage: Record<string, any>) {
+        const user = await this.userModel
+            .findByIdAndUpdate(userId, { $set: { profileImage } }, { new: true })
             .lean()
             .exec();
         if (!user) {

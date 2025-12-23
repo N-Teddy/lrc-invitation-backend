@@ -4,7 +4,7 @@ import { Town } from '../../common/enums/activity.enum';
 
 export class UserResponseDto {
     @ApiProperty()
-    _id: string;
+    id: string;
 
     @ApiProperty()
     fullName: string;
@@ -23,6 +23,16 @@ export class UserResponseDto {
 
     @ApiPropertyOptional()
     preferredLanguage?: string;
+
+    @ApiPropertyOptional()
+    profileImage?: {
+        url?: string;
+        provider?: string;
+        publicId?: string;
+        mimeType?: string;
+        sizeBytes?: number;
+        updatedAt?: Date;
+    };
 
     @ApiPropertyOptional()
     lifecycleStatus?: LifecycleStatus;

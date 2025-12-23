@@ -5,6 +5,11 @@ import { ConfigService } from '@nestjs/config';
 export class AppConfigService {
     constructor(private readonly configService: ConfigService) {}
 
+    // Expose raw ConfigService only when absolutely needed
+    get raw(): ConfigService {
+        return this.configService;
+    }
+
     get jwtAccessSecret(): string {
         return this.configService.get<string>('JWT_ACCESS_SECRET', '');
     }
@@ -23,6 +28,35 @@ export class AppConfigService {
 
     get appBaseUrl(): string {
         return this.configService.get<string>('APP_BASE_URL', 'http://localhost:3000');
+    }
+
+    get storageProvider(): 'local' | 'cloudinary' {
+        const env = this.configService.get<string>('NODE_ENV', 'development');
+        const configured = this.configService.get<string>('STORAGE_PROVIDER');
+        if (configured === 'local' || configured === 'cloudinary') {
+            return configured;
+        }
+        return env === 'production' ? 'cloudinary' : 'local';
+    }
+
+    get storageBaseUrl(): string {
+        return this.configService.get<string>('STORAGE_BASE_URL', 'http://localhost:3000/uploads');
+    }
+
+    get uploadsDir(): string {
+        return this.configService.get<string>('UPLOADS_DIR', 'uploads');
+    }
+
+    get cloudinaryCloudName(): string | undefined {
+        return this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
+    }
+
+    get cloudinaryApiKey(): string | undefined {
+        return this.configService.get<string>('CLOUDINARY_API_KEY');
+    }
+
+    get cloudinaryApiSecret(): string | undefined {
+        return this.configService.get<string>('CLOUDINARY_API_SECRET');
     }
 
     get notificationProvider(): string {

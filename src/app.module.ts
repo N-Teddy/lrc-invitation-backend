@@ -1,17 +1,21 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { MediaModule } from './media/media.module';
+import { GroupsModule } from './groups/groups.module';
 
 @Module({
     imports: [
         ConfigModule.forRoot({
             isGlobal: true,
         }),
+        ScheduleModule.forRoot(),
         MongooseModule.forRootAsync({
             useFactory: (configService: ConfigService) => ({
                 uri:
@@ -23,6 +27,8 @@ import { NotificationsModule } from './notifications/notifications.module';
         UsersModule,
         AuthModule,
         NotificationsModule,
+        MediaModule,
+        GroupsModule,
     ],
     controllers: [AppController],
     providers: [AppService],

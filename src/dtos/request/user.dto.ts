@@ -20,20 +20,6 @@ export class CreateUserDto {
     @ApiProperty({ required: false })
     @IsString()
     @IsOptional()
-    googleId?: string;
-
-    @ApiProperty({ required: false })
-    @IsString()
-    @IsOptional()
-    googleEmail?: string;
-
-    @ApiProperty({ required: false })
-    @IsOptional()
-    googleLinkedAt?: Date;
-
-    @ApiProperty({ required: false })
-    @IsString()
-    @IsOptional()
     email?: string;
 
     @ApiProperty({ required: false })
@@ -50,20 +36,6 @@ export class CreateUserDto {
     @IsString()
     @IsOptional()
     preferredLanguage?: string;
-
-    @ApiProperty({ required: false })
-    @IsBoolean()
-    @IsOptional()
-    registrationPendingApproval?: boolean;
-
-    @ApiProperty({ required: false })
-    @IsString()
-    @IsOptional()
-    magicToken?: string;
-
-    @ApiProperty({ required: false })
-    @IsOptional()
-    magicExpiresAt?: Date;
 
     @ApiProperty({ required: false })
     @IsString()
