@@ -33,4 +33,5 @@ export enum ReminderStatus {
 export enum Channel {
     WhatsApp = 'whatsapp',
     Email = 'email',
+    InApp = 'in_app',
 }

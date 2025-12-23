@@ -63,6 +63,30 @@ export class AppConfigService {
         return this.configService.get<string>('NOTIFICATION_PROVIDER', 'email');
     }
 
+    get notificationFallbackProvider(): string {
+        return this.configService.get<string>('NOTIFICATION_FALLBACK_PROVIDER', 'email');
+    }
+
+    get whatsAppEnabled(): boolean {
+        return this.configService.get<string>('WHATSAPP_ENABLED', 'false') === 'true';
+    }
+
+    get whatsAppPhoneNumberId(): string | undefined {
+        return this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID');
+    }
+
+    get whatsAppBusinessAccountId(): string | undefined {
+        return this.configService.get<string>('WHATSAPP_BUSINESS_ACCOUNT_ID');
+    }
+
+    get whatsAppAccessToken(): string | undefined {
+        return this.configService.get<string>('WHATSAPP_ACCESS_TOKEN');
+    }
+
+    get inAppNotificationsEnabled(): boolean {
+        return this.configService.get<string>('IN_APP_NOTIFICATIONS_ENABLED', 'true') === 'true';
+    }
+
     get mailHost(): string {
         return this.configService.get<string>('MAIL_HOST', 'localhost');
     }

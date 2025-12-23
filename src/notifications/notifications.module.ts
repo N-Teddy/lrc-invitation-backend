@@ -6,15 +6,23 @@ import { EmailNotificationSender } from './email.sender';
 import { WhatsAppNotificationSender } from './whatsapp.stub.sender';
 import { NotificationsGateway } from './notifications.gateway';
 import { AppConfigService } from '../config/app-config.service';
+import { User, UserSchema } from '../schema/user.schema';
+import { NotificationsCron } from '../common/cron/notifications.cron';
 
 @Module({
-    imports: [MongooseModule.forFeature([{ name: Notification.name, schema: NotificationSchema }])],
+    imports: [
+        MongooseModule.forFeature([
+            { name: Notification.name, schema: NotificationSchema },
+            { name: User.name, schema: UserSchema },
+        ]),
+    ],
     providers: [
         NotificationService,
         EmailNotificationSender,
         WhatsAppNotificationSender,
         NotificationsGateway,
         AppConfigService,
+        NotificationsCron,
     ],
     exports: [NotificationService, NotificationsGateway],
 })

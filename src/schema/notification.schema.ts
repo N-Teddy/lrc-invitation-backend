@@ -20,7 +20,16 @@ class InteractiveOption {
 @Schema({ timestamps: true })
 export class Notification {
     @Prop({ type: String, enum: Channel, default: Channel.Email })
-    channel: Channel;
+    primaryChannel: Channel;
+
+    @Prop({ type: String, enum: Channel, default: Channel.Email })
+    channelUsed: Channel;
+
+    @Prop({ default: false })
+    fallbackUsed?: boolean;
+
+    @Prop()
+    skipReason?: string;
 
     @Prop({ type: Types.ObjectId, ref: 'User', required: true })
     toUserId: Types.ObjectId;
@@ -49,6 +58,21 @@ export class Notification {
     @Prop({ type: String, enum: NotificationStatus, default: NotificationStatus.Queued })
     status: NotificationStatus;
 
+    @Prop({ type: Object })
+    payload?: Record<string, any>;
+
+    @Prop({ default: 0 })
+    attempts: number;
+
+    @Prop({ default: 6 })
+    maxAttempts: number;
+
+    @Prop()
+    nextAttemptAt?: Date;
+
+    @Prop()
+    lastAttemptAt?: Date;
+
     @Prop()
     providerMessageId?: string;
 
@@ -63,3 +87,4 @@ export const NotificationSchema = SchemaFactory.createForClass(Notification);
 NotificationSchema.index({ toUserId: 1, createdAt: 1 });
 NotificationSchema.index({ contextType: 1, contextId: 1 });
 NotificationSchema.index({ status: 1 });
+NotificationSchema.index({ status: 1, nextAttemptAt: 1 });
