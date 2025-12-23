@@ -11,6 +11,7 @@ import { TownScopeService } from '../common/services/town-scope.service';
 import { JobsModule } from '../jobs/jobs.module';
 import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
 import { TransitionsCron } from '../common/cron/transitions.cron';
+import { AppConfigService } from '../config/app-config.service';
 
 @Module({
     imports: [
@@ -24,7 +25,13 @@ import { TransitionsCron } from '../common/cron/transitions.cron';
         JobsModule,
     ],
     controllers: [ReportingController],
-    providers: [ReportingService, TownScopeService, RecipientsResolverService, TransitionsCron],
+    providers: [
+        ReportingService,
+        TownScopeService,
+        RecipientsResolverService,
+        TransitionsCron,
+        AppConfigService,
+    ],
     exports: [ReportingService],
 })
 export class ReportingModule {}

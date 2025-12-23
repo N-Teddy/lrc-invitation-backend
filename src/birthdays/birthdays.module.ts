@@ -7,6 +7,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { JobsModule } from '../jobs/jobs.module';
 import { BirthdaysCron } from '../common/cron/birthdays.cron';
 import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
+import { AppConfigService } from '../config/app-config.service';
 
 @Module({
     imports: [
@@ -17,6 +18,6 @@ import { RecipientsResolverService } from '../common/services/recipients-resolve
         NotificationsModule,
         JobsModule,
     ],
-    providers: [BirthdaysService, BirthdaysCron, RecipientsResolverService],
+    providers: [BirthdaysService, BirthdaysCron, RecipientsResolverService, AppConfigService],
 })
 export class BirthdaysModule {}

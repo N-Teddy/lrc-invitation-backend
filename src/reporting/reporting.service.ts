@@ -12,7 +12,12 @@ import { NotificationContextType } from '../common/enums/notification.enum';
 import { TownScopeService } from '../common/services/town-scope.service';
 import { JobRunsService } from '../jobs/job-runs.service';
 import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
-import { formatMonthDayYear, getDatePartsInTimeZone } from '../common/utils/timezone.util';
+import {
+    endOfDayInTimeZone,
+    formatMonthDayYear,
+    getDatePartsInTimeZone,
+} from '../common/utils/timezone.util';
+import { AppConfigService } from '../config/app-config.service';
 
 type Totals = { present: number; absent: number; total: number };
 
@@ -38,6 +43,7 @@ export class ReportingService {
         private readonly townScopeService: TownScopeService,
         private readonly recipientsResolver: RecipientsResolverService,
         private readonly jobRuns: JobRunsService,
+        private readonly config: AppConfigService,
     ) {}
 
     async sendTurning19YearlyReport(now = new Date()) {
@@ -591,6 +597,9 @@ export class ReportingService {
             .exec();
 
         const subject = 'Post-activity attendance stats';
+        const baseRedirect = this.config.appBaseUrl.replace(/\/$/, '');
+        const detailsUrl = `${baseRedirect}/reports/activities/${activityId}/attendance-stats`;
+        const expiresAt = endOfDayInTimeZone(new Date(), 'Africa/Douala');
         const message =
             `Activity ${stats.activityType} (${stats.activityTown})\\n` +
             `Children: ${stats.totalsByRole.children.present}/${stats.totalsByRole.children.total} present\\n` +
@@ -610,6 +619,12 @@ export class ReportingService {
                     subject,
                     headline: subject,
                     message,
+                },
+                actions: [{ id: 'DETAILS', label: 'View details', redirectUrl: detailsUrl }],
+                conversation: {
+                    state: 'attendance_report',
+                    allowedResponses: ['DETAILS'],
+                    expiresAt,
                 },
                 contextType: NotificationContextType.AttendanceReport,
                 contextId: String(activityId),

@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Notification, NotificationDocument } from '../schema/notification.schema';
@@ -14,6 +16,9 @@ import { NotificationsGateway } from './notifications.gateway';
 import { AppConfigService } from '../config/app-config.service';
 import { User, UserDocument } from '../schema/user.schema';
 import { computeBackoffMs } from '../common/utils/backoff.util';
+import { ActionTokensService } from '../common/services/action-tokens.service';
+import { ConversationStateService } from '../conversations/conversation-state.service';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class NotificationService {
@@ -28,6 +33,9 @@ export class NotificationService {
         private readonly whatsappSender: WhatsAppNotificationSender,
         private readonly notificationsGateway: NotificationsGateway,
         private readonly config: AppConfigService,
+        private readonly settingsService: SettingsService,
+        private readonly actionTokensService: ActionTokensService,
+        private readonly conversationStateService: ConversationStateService,
     ) {}
 
     async send(
@@ -55,10 +63,10 @@ export class NotificationService {
             contextId: options.contextId,
             status: NotificationStatus.Queued,
             templateName,
-            templateLanguage: 'en',
-            languageUsed: 'en',
+            templateLanguage: 'auto',
+            languageUsed: 'auto',
             languageFallbackUsed: false,
-            interactiveOptions: [],
+            interactiveOptions: (options.actions ?? []).map((a) => ({ id: a.id, label: a.label })),
             payload: {
                 subject,
                 message: options.message,
@@ -69,6 +77,70 @@ export class NotificationService {
             maxAttempts: 6,
             nextAttemptAt: new Date(),
         }).save();
+
+        if (options.actions?.length) {
+            const expiresAt =
+                options.conversation?.expiresAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+            const actionLinks = options.actions.map((a) => {
+                const token = this.actionTokensService.sign(
+                    {
+                        typ: 'action',
+                        sub: options.userId,
+                        notificationId: String(notif._id),
+                        contextType: options.contextType,
+                        contextId: options.contextId,
+                        actionId: a.id,
+                        redirectUrl: a.redirectUrl,
+                    },
+                    expiresAt,
+                );
+                return {
+                    id: a.id,
+                    label: a.label,
+                    url: `${this.config.apiBaseUrl}/actions/${token}`,
+                };
+            });
+
+            const actionsHtml = actionLinks
+                .map(
+                    (a) =>
+                        `<a href="${a.url}" style="display:inline-block;margin:6px 8px 6px 0;background:#2563eb;color:#fff;padding:10px 14px;text-decoration:none;border-radius:8px;">${a.label}</a>`,
+                )
+                .join('');
+
+            const actionsText = actionLinks.map((a) => `${a.label}: ${a.url}`).join('\n');
+
+            const updatedTemplateData: Record<string, any> = {
+                ...(templateData ?? {}),
+                actionsHtml,
+                actionsText,
+            };
+
+            if (actionLinks.length === 1) {
+                updatedTemplateData.actionUrl = actionLinks[0].url;
+                updatedTemplateData.actionLabel = actionLinks[0].label;
+            }
+
+            await this.notificationModel.findByIdAndUpdate(notif._id, {
+                $set: {
+                    interactiveOptions: actionLinks.map((a) => ({ id: a.id, label: a.label })),
+                    'payload.templateData': updatedTemplateData,
+                },
+            });
+
+            if (options.conversation) {
+                await this.conversationStateService.upsert({
+                    userId: options.userId,
+                    contextType: options.contextType,
+                    contextId: options.contextId,
+                    state: options.conversation.state,
+                    allowedResponses: options.conversation.allowedResponses,
+                    expiresAt: options.conversation.expiresAt,
+                    lastNotificationId: String(notif._id),
+                });
+            }
+        }
 
         try {
             await this.dispatchNotification(String(notif._id));
@@ -146,6 +218,11 @@ export class NotificationService {
         const fallback = this.getFallbackChannel(primary);
 
         const payload = (notif.payload ?? {}) as Record<string, any>;
+        const languages = await this.settingsService.getLanguages();
+        const requestedLanguage =
+            (user.preferredLanguage as string | undefined) ?? languages.defaultLanguage ?? 'en';
+        payload.templateLanguage = requestedLanguage;
+
         const sendResult = await this.trySendInOrder(
             [
                 { channel: primary, fallbackUsed: false },
@@ -164,6 +241,9 @@ export class NotificationService {
                 channelUsed: sendResult.channelUsed,
                 fallbackUsed: sendResult.fallbackUsed,
                 skipReason: sendResult.skipReason,
+                templateLanguage: requestedLanguage,
+                languageUsed: sendResult.languageUsed ?? requestedLanguage,
+                languageFallbackUsed: sendResult.languageFallbackUsed ?? false,
                 error: undefined,
                 nextAttemptAt: undefined,
             });
@@ -178,6 +258,9 @@ export class NotificationService {
                 status: NotificationStatus.Failed,
                 error: sendResult.error ?? 'Notification send failed',
                 skipReason: sendResult.skipReason ?? 'max_attempts_reached',
+                templateLanguage: requestedLanguage,
+                languageUsed: sendResult.languageUsed ?? requestedLanguage,
+                languageFallbackUsed: sendResult.languageFallbackUsed ?? false,
                 nextAttemptAt: undefined,
             });
             return;
@@ -188,6 +271,9 @@ export class NotificationService {
             status: NotificationStatus.Failed,
             error: sendResult.error ?? 'Notification send failed',
             skipReason: sendResult.skipReason,
+            templateLanguage: requestedLanguage,
+            languageUsed: sendResult.languageUsed ?? requestedLanguage,
+            languageFallbackUsed: sendResult.languageFallbackUsed ?? false,
             nextAttemptAt: new Date(Date.now() + delayMs),
         });
     }
@@ -203,8 +289,12 @@ export class NotificationService {
         fallbackUsed?: boolean;
         skipReason?: string;
         error?: string;
+        languageUsed?: string;
+        languageFallbackUsed?: boolean;
     }> {
         let lastError: string | undefined;
+        let languageUsed: string | undefined;
+        let languageFallbackUsed: boolean | undefined;
 
         for (const candidate of candidates) {
             const result = await this.trySend(candidate.channel, user, notif, payload);
@@ -214,19 +304,27 @@ export class NotificationService {
                     channelUsed: candidate.channel,
                     fallbackUsed: candidate.fallbackUsed,
                     skipReason: result.skipReason,
+                    languageUsed: result.languageUsed,
+                    languageFallbackUsed: result.languageFallbackUsed,
                 };
             }
             if (result.skipReason) {
                 lastError = result.error ?? lastError;
+                languageUsed = result.languageUsed ?? languageUsed;
+                languageFallbackUsed = result.languageFallbackUsed ?? languageFallbackUsed;
                 continue;
             }
             lastError = result.error ?? lastError;
+            languageUsed = result.languageUsed ?? languageUsed;
+            languageFallbackUsed = result.languageFallbackUsed ?? languageFallbackUsed;
         }
 
         return {
             sent: false,
             error: lastError,
             skipReason: 'all_channels_failed',
+            languageUsed,
+            languageFallbackUsed,
         };
     }
 
@@ -235,7 +333,13 @@ export class NotificationService {
         user: Record<string, any>,
         notif: Record<string, any>,
         payload: Record<string, any>,
-    ): Promise<{ sent: boolean; skipReason?: string; error?: string }> {
+    ): Promise<{
+        sent: boolean;
+        skipReason?: string;
+        error?: string;
+        languageUsed?: string;
+        languageFallbackUsed?: boolean;
+    }> {
         if (channel === Channel.WhatsApp) {
             if (!this.isWhatsAppAvailable()) {
                 return { sent: false, skipReason: 'whatsapp_unavailable' };
@@ -259,7 +363,7 @@ export class NotificationService {
                     contextId: String(notif.contextId),
                 });
                 this.emitInApp(user, notif, payload);
-                return { sent: true };
+                return { sent: true, languageUsed: payload.templateLanguage };
             } catch (err) {
                 return { sent: false, error: err?.message ?? String(err) };
             }
@@ -270,19 +374,28 @@ export class NotificationService {
             if (!to) {
                 return { sent: false, skipReason: 'no_email' };
             }
+
+            const baseTemplateName = String(payload.templateName ?? 'generic-notification');
+            const requested = String(payload.templateLanguage ?? 'en');
+            const variant = this.resolveEmailTemplateVariant(baseTemplateName, requested);
+
             try {
                 await this.emailSender.send({
                     userId: String(user._id),
                     to,
                     subject: payload.subject,
                     message: payload.message,
-                    templateName: payload.templateName,
+                    templateName: variant.templateName,
                     templateData: payload.templateData,
                     contextType: notif.contextType as NotificationContextType,
                     contextId: String(notif.contextId),
                 });
                 this.emitInApp(user, notif, payload);
-                return { sent: true };
+                return {
+                    sent: true,
+                    languageUsed: variant.languageUsed,
+                    languageFallbackUsed: variant.fallbackUsed,
+                };
             } catch (err) {
                 return { sent: false, error: err?.message ?? String(err) };
             }
@@ -301,6 +414,28 @@ export class NotificationService {
         }
 
         return { sent: false, skipReason: 'unsupported_channel' };
+    }
+
+    private resolveEmailTemplateVariant(baseTemplateName: string, requestedLanguage: string) {
+        const normalizedLang = requestedLanguage?.trim() || 'en';
+        if (normalizedLang === 'en') {
+            return { templateName: baseTemplateName, languageUsed: 'en', fallbackUsed: false };
+        }
+
+        const candidateName = `${baseTemplateName}.${normalizedLang}`;
+        const candidatePath = join(process.cwd(), 'templates', 'email', `${candidateName}.hbs`);
+        if (existsSync(candidatePath)) {
+            return {
+                templateName: candidateName,
+                languageUsed: normalizedLang,
+                fallbackUsed: false,
+            };
+        }
+
+        this.logger.warn(
+            `Missing email template "${candidateName}.hbs"; falling back to English ("${baseTemplateName}.hbs")`,
+        );
+        return { templateName: baseTemplateName, languageUsed: 'en', fallbackUsed: true };
     }
 
     private emitInApp(

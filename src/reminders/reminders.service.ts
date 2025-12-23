@@ -19,6 +19,9 @@ import {
 } from '../dtos/request/reminder.dto';
 import { computeNextRunAt } from '../common/utils/recurrence.util';
 import { MonitorLevel, UserRole } from '../common/enums/user.enum';
+import { endOfDayInTimeZone } from '../common/utils/timezone.util';
+
+const TZ = 'Africa/Douala';
 
 @Injectable()
 export class RemindersService {
@@ -278,6 +281,7 @@ export class RemindersService {
 
         const sentTo: string[] = [];
         const subject = 'Reminder';
+        const expiresAt = endOfDayInTimeZone(now, TZ);
 
         for (const userId of recipients) {
             const u = userById.get(userId);
@@ -285,6 +289,19 @@ export class RemindersService {
 
             const to = this.resolveTo(u);
             if (!to) continue;
+
+            const baseRedirect = this.config.appBaseUrl.replace(/\/$/, '');
+            const reminderUrl = `${baseRedirect}/reminders/${String(reminder._id)}`;
+
+            const actions = [
+                { id: 'ACK', label: 'Acknowledge', redirectUrl: reminderUrl },
+                { id: 'DETAILS', label: 'View details', redirectUrl: reminderUrl },
+                ...(reminder.expectedResponses ?? []).map((r: any) => ({
+                    id: `RESP:${String(r.value)}`,
+                    label: String(r.label ?? r.value ?? 'Respond'),
+                    redirectUrl: reminderUrl,
+                })),
+            ];
 
             await this.notificationService.send({
                 userId: String(u._id),
@@ -296,6 +313,12 @@ export class RemindersService {
                     subject,
                     headline: subject,
                     message: reminder.message,
+                },
+                actions,
+                conversation: {
+                    state: 'reminder',
+                    allowedResponses: actions.map((a) => a.id),
+                    expiresAt,
                 },
                 contextType: NotificationContextType.Reminder,
                 contextId: String(reminder._id),

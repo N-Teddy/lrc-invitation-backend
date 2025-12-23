@@ -11,6 +11,11 @@
       <div style="color: #e5e7eb;">
         {{bodyHtml}}
       </div>
+      {{#if actionsHtml}}
+        <div style="margin-top: 16px;">
+          {{actionsHtml}}
+        </div>
+      {{/if}}
       {{#if appUrl}}
         <p style="margin-top: 16px;">
           <a href="{{appUrl}}" style="color:#93c5fd;">Open app</a>
@@ -19,4 +24,3 @@
     </div>
   </body>
 </html>
-

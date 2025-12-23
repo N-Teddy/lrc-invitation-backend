@@ -13,6 +13,7 @@ import { RecipientsResolverService } from '../common/services/recipients-resolve
 import { ActivitiesInvitesCron } from '../common/cron/activities-invites.cron';
 import { ActivitiesInvitesService } from './activities-invites.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AppConfigService } from '../config/app-config.service';
 
 @Module({
     imports: [
@@ -33,6 +34,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
         ActivitiesInvitesCron,
         TownScopeService,
         RecipientsResolverService,
+        AppConfigService,
     ],
     exports: [ActivitiesService],
 })

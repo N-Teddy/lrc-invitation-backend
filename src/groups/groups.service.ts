@@ -19,6 +19,9 @@ import { AppConfigService } from '../config/app-config.service';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
 import { SettingsService } from '../settings/settings.service';
 import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
+import { endOfDayInTimeZone } from '../common/utils/timezone.util';
+
+const TZ = 'Africa/Douala';
 
 @Injectable()
 export class GroupsService {
@@ -183,6 +186,14 @@ export class GroupsService {
             if (!to) {
                 continue;
             }
+
+            const baseRedirect = this.config.appBaseUrl.replace(/\/$/, '');
+            const openProfileUrl = `${baseRedirect}/children/${params.childId}`;
+            const expiresAt = endOfDayInTimeZone(new Date(), TZ);
+            const actions = [
+                { id: 'ACK', label: 'Acknowledge', redirectUrl: openProfileUrl },
+                { id: 'OPEN_PROFILE', label: 'Open profile', redirectUrl: openProfileUrl },
+            ];
             await this.notificationService.send({
                 userId: recipient.userId,
                 to,
@@ -193,6 +204,12 @@ export class GroupsService {
                     subject: 'Group change reminder',
                     headline: 'Group change reminder',
                     message,
+                },
+                actions,
+                conversation: {
+                    state: 'group_change',
+                    allowedResponses: actions.map((a) => a.id),
+                    expiresAt,
                 },
                 contextType: NotificationContextType.GroupChange,
                 contextId: String(reminder._id),

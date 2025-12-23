@@ -18,6 +18,10 @@ export class AppConfigService {
         return this.configService.get<string>('JWT_REFRESH_SECRET', '');
     }
 
+    get actionTokenSecret(): string {
+        return this.configService.get<string>('ACTION_TOKEN_SECRET', '') || this.jwtRefreshSecret;
+    }
+
     get googleClientId(): string | undefined {
         return this.configService.get<string>('GOOGLE_CLIENT_ID');
     }
@@ -28,6 +32,12 @@ export class AppConfigService {
 
     get appBaseUrl(): string {
         return this.configService.get<string>('APP_BASE_URL', 'http://localhost:3000');
+    }
+
+    get apiBaseUrl(): string {
+        const configured = this.configService.get<string>('API_BASE_URL');
+        if (configured) return configured.replace(/\/$/, '');
+        return `${this.appBaseUrl.replace(/\/$/, '')}/api`;
     }
 
     get storageProvider(): 'local' | 'cloudinary' {

@@ -15,6 +15,8 @@ import { PaymentsModule } from './payments/payments.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { SettingsModule } from './settings/settings.module';
 import { BirthdaysModule } from './birthdays/birthdays.module';
+import { ActionsModule } from './actions/actions.module';
+import { ConversationsModule } from './conversations/conversations.module';
 
 @Module({
     imports: [
@@ -41,6 +43,8 @@ import { BirthdaysModule } from './birthdays/birthdays.module';
         PaymentsModule,
         RemindersModule,
         BirthdaysModule,
+        ConversationsModule,
+        ActionsModule,
     ],
     controllers: [AppController],
     providers: [AppService],

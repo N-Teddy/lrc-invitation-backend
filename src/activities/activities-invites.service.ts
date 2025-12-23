@@ -12,6 +12,7 @@ import { Activity, ActivityDocument } from '../schema/activity.schema';
 import { User, UserDocument } from '../schema/user.schema';
 import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
 import { ActivitiesService } from './activities.service';
+import { endOfDayInTimeZone } from '../common/utils/timezone.util';
 
 const TZ = 'Africa/Douala';
 
@@ -82,6 +83,7 @@ export class ActivitiesInvitesService {
         const invitedChildrenCount = (activity.invitedChildrenUserIds ?? []).length;
         const invitedMonitorCount = (activity.invitedMonitorUserIds ?? []).length;
         const appUrl = `${this.config.appBaseUrl}/activities/${String(activity._id)}`;
+        const expiresAt = endOfDayInTimeZone(start, TZ);
 
         let extraText = '';
         let extraHtml = '';
@@ -148,6 +150,7 @@ export class ActivitiesInvitesService {
             const to = r.email ?? r.phoneE164;
             if (!to) continue;
 
+            const actions = [{ id: 'DETAILS', label: 'View details', redirectUrl: appUrl }];
             await this.notificationService.send({
                 userId: r.userId,
                 to,
@@ -159,6 +162,12 @@ export class ActivitiesInvitesService {
                     headline: subject,
                     bodyHtml: html,
                     appUrl,
+                },
+                actions,
+                conversation: {
+                    state: isConference ? 'conference_invites_3_weeks' : 'activity_invites_3_weeks',
+                    allowedResponses: actions.map((a) => a.id),
+                    expiresAt,
                 },
                 contextType: isConference
                     ? NotificationContextType.Conference
