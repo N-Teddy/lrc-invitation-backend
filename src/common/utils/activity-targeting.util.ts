@@ -17,4 +17,3 @@ export function targetGroupsForTargetingCode(code: TargetingCode): ChildGroup[] 
 export function isValidConferenceDuration(days: number | undefined): boolean {
     return days === 2 || days === 5;
 }
-

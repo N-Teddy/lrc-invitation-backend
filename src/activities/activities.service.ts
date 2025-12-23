@@ -39,7 +39,14 @@ export class ActivitiesService {
         this.assertCanCreate(dto, currentUser);
         const activityPayload = this.normalizeCreatePayload(dto, currentUser);
 
-        const created = await new this.activityModel(activityPayload).save();
+        const { invitedChildrenUserIds, invitedMonitorUserIds } =
+            await this.computeInvitations(activityPayload);
+
+        const created = await new this.activityModel({
+            ...activityPayload,
+            invitedChildrenUserIds,
+            invitedMonitorUserIds,
+        }).save();
         return created.toObject();
     }
 
