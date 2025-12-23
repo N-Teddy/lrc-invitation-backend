@@ -6,10 +6,12 @@ import { AuthGuard } from './guards/auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
     imports: [
         UsersModule,
+        NotificationsModule,
         JwtModule.register({
             global: true,
         }),

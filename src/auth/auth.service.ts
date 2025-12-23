@@ -3,11 +3,10 @@ import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
 import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from '../users/users.service';
-import { RegisterRequestDto } from './dto/auth.dto';
+import { RegisterRequestDto, GoogleSignInDto } from '../dtos/request/auth.dto';
 import { MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { NotificationService } from '../notifications/notifications.service';
 import { NotificationContextType } from '../common/enums/notification.enum';
-import { GoogleSignInDto } from './dto/google.dto';
 
 const ACCESS_TOKEN_EXPIRES_IN = '24h';
 const REFRESH_TOKEN_EXPIRES_IN = '7d';
@@ -133,7 +132,7 @@ export class AuthService {
             throw new UnauthorizedException('Awaiting approval');
         }
 
-        return this.generateTokens(user._id, user.role, user.monitorLevel);
+        return this.generateTokens(String(user._id), user.role, user.monitorLevel);
     }
 
     private buildMagicLink(token: string): string {

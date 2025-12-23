@@ -1,4 +1,4 @@
-import { NotificationContextType } from '../common/enums/notification.enum';
+import { NotificationContextType } from '../enums/notification.enum';
 
 export interface SendOptions {
     userId: string;

@@ -6,11 +6,11 @@ import {
     RegisterRequestDto,
     MagicLinkExchangeDto,
     RefreshTokenDto,
-    AuthTokensResponseDto,
-} from './dto/auth.dto';
+    GoogleSignInDto,
+} from '../dtos/request/auth.dto';
+import { AuthTokensResponseDto } from '../dtos/response/auth.dto';
 import { AuthService } from './auth.service';
 import { Public } from '../common/decorators/public.decorator';
-import { GoogleSignInDto } from './dto/google.dto';
 
 @ApiTags('auth')
 @ApiBearerAuth()

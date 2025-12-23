@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../schema/user.schema';
 import { CreateUserDto, UpdateUserDto } from '../dtos/request/user.dto';
 
@@ -8,11 +8,15 @@ import { CreateUserDto, UpdateUserDto } from '../dtos/request/user.dto';
 export class UsersService {
     constructor(@InjectModel(User.name) private readonly userModel: Model<UserDocument>) {}
 
-    async create(dto: CreateUserDto): Promise<User> {
+    async create(dto: CreateUserDto): Promise<Record<string, any>> {
         const user = new this.userModel({
             fullName: dto.fullName,
             role: dto.role,
             monitorLevel: dto.monitorLevel,
+            email: dto.email?.toLowerCase(),
+            googleId: dto.googleId,
+            googleEmail: dto.googleEmail,
+            googleLinkedAt: dto.googleLinkedAt,
             dateOfBirth: dto.dateOfBirth,
             originTown: dto.originTown,
             preferredLanguage: dto.preferredLanguage,
@@ -27,36 +31,37 @@ export class UsersService {
                   }
                 : undefined,
         });
-        return user.save();
+        const saved = await user.save();
+        return saved.toObject();
     }
 
-    async findAll(): Promise<User[]> {
-        return this.userModel.find().exec();
+    async findAll(): Promise<Record<string, any>[]> {
+        return this.userModel.find().lean().exec();
     }
 
-    async findById(id: string): Promise<User | null> {
-        return this.userModel.findById(id).exec();
+    async findById(id: string): Promise<Record<string, any> | null> {
+        return this.userModel.findById(id).lean().exec();
     }
 
-    async findByEmail(email: string): Promise<User | null> {
-        return this.userModel.findOne({ email: email.toLowerCase() }).exec();
+    async findByEmail(email: string): Promise<Record<string, any> | null> {
+        return this.userModel.findOne({ email: email.toLowerCase() }).lean().exec();
     }
 
-    async findByMagicToken(token: string): Promise<User | null> {
-        return this.userModel.findOne({ magicToken: token }).exec();
+    async findByMagicToken(token: string): Promise<Record<string, any> | null> {
+        return this.userModel.findOne({ magicToken: token }).lean().exec();
     }
 
-    async clearMagicToken(userId: string) {
+    async clearMagicToken(userId: string | Types.ObjectId) {
         await this.userModel
             .findByIdAndUpdate(userId, { $unset: { magicToken: '', magicExpiresAt: '' } })
             .exec();
     }
 
-    async findByGoogleId(googleId: string): Promise<User | null> {
-        return this.userModel.findOne({ googleId }).exec();
+    async findByGoogleId(googleId: string): Promise<Record<string, any> | null> {
+        return this.userModel.findOne({ googleId }).lean().exec();
     }
 
-    async linkGoogle(userId: string, googleId: string, googleEmail: string) {
+    async linkGoogle(userId: string | Types.ObjectId, googleId: string, googleEmail: string) {
         await this.userModel
             .findByIdAndUpdate(userId, {
                 $set: {
@@ -68,7 +73,7 @@ export class UsersService {
             .exec();
     }
 
-    async findOneOrFail(id: string): Promise<User> {
+    async findOneOrFail(id: string): Promise<Record<string, any>> {
         const user = await this.findById(id);
         if (!user) {
             throw new NotFoundException('User not found');
@@ -76,7 +81,7 @@ export class UsersService {
         return user;
     }
 
-    async update(id: string, dto: UpdateUserDto): Promise<User> {
+    async update(id: string, dto: UpdateUserDto): Promise<Record<string, any>> {
         const user = await this.userModel
             .findByIdAndUpdate(
                 id,
@@ -93,6 +98,7 @@ export class UsersService {
                 },
                 { new: true },
             )
+            .lean()
             .exec();
         if (!user) {
             throw new NotFoundException('User not found');

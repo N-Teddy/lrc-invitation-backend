@@ -1,4 +1,4 @@
-import { MonitorLevel, UserRole } from '../../common/enums/user.enum';
+import { MonitorLevel, UserRole } from '../enums/user.enum';
 
 export interface UserWithAuth {
     _id: string;

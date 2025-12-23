@@ -9,7 +9,7 @@ import {
 } from '../common/enums/notification.enum';
 import { EmailNotificationSender } from './email.sender';
 import { WhatsAppNotificationSender } from './whatsapp.stub.sender';
-import { SendOptions } from './notification-sender.interface';
+import { SendOptions } from '../common/interfaces/notification-sender.interface';
 import { NotificationsGateway } from './notifications.gateway';
 
 @Injectable()
