@@ -8,6 +8,9 @@ import { User, UserSchema } from '../schema/user.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MonitorProfile, MonitorProfileSchema } from '../schema/monitor-profile.schema';
 import { TownScopeService } from '../common/services/town-scope.service';
+import { JobsModule } from '../jobs/jobs.module';
+import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
+import { TransitionsCron } from '../common/cron/transitions.cron';
 
 @Module({
     imports: [
@@ -18,9 +21,10 @@ import { TownScopeService } from '../common/services/town-scope.service';
             { name: MonitorProfile.name, schema: MonitorProfileSchema },
         ]),
         NotificationsModule,
+        JobsModule,
     ],
     controllers: [ReportingController],
-    providers: [ReportingService, TownScopeService],
+    providers: [ReportingService, TownScopeService, RecipientsResolverService, TransitionsCron],
     exports: [ReportingService],
 })
 export class ReportingModule {}

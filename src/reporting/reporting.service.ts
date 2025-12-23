@@ -10,6 +10,9 @@ import { MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { NotificationService } from '../notifications/notifications.service';
 import { NotificationContextType } from '../common/enums/notification.enum';
 import { TownScopeService } from '../common/services/town-scope.service';
+import { JobRunsService } from '../jobs/job-runs.service';
+import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
+import { formatMonthDayYear, getDatePartsInTimeZone } from '../common/utils/timezone.util';
 
 type Totals = { present: number; absent: number; total: number };
 
@@ -33,7 +36,75 @@ export class ReportingService {
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
         private readonly notificationService: NotificationService,
         private readonly townScopeService: TownScopeService,
+        private readonly recipientsResolver: RecipientsResolverService,
+        private readonly jobRuns: JobRunsService,
     ) {}
+
+    async sendTurning19YearlyReport(now = new Date()) {
+        const tz = 'Africa/Douala';
+        const parts = getDatePartsInTimeZone(now, tz);
+        if (parts.month !== 1 || parts.day !== 1) return;
+
+        const runKey = String(parts.year);
+        const shouldRun = await this.jobRuns.tryStart('turning_19_yearly', runKey, {
+            timeZone: tz,
+        });
+        if (!shouldRun) return;
+
+        const report = await this.getTurning19Report(parts.year);
+        const byTown = new Map<string, Array<{ fullName: string; dateOfBirth?: Date }>>();
+        for (const c of report.children ?? []) {
+            const townKey = (c.originTown as string | undefined) ?? 'unknown';
+            byTown.set(townKey, [
+                ...(byTown.get(townKey) ?? []),
+                { fullName: c.fullName, dateOfBirth: c.dateOfBirth },
+            ]);
+        }
+
+        const towns = [...byTown.keys()].sort((a, b) => a.localeCompare(b));
+        const lines: string[] = [];
+        const htmlLines: string[] = [];
+        lines.push(`Turning 19 in ${parts.year}: ${report.count}`);
+        htmlLines.push(`<p><strong>Turning 19 in ${parts.year}:</strong> ${report.count}</p>`);
+
+        for (const town of towns) {
+            const list = (byTown.get(town) ?? []).slice().sort((a, b) => {
+                const ad = a.dateOfBirth ? new Date(a.dateOfBirth).getTime() : 0;
+                const bd = b.dateOfBirth ? new Date(b.dateOfBirth).getTime() : 0;
+                return ad - bd;
+            });
+
+            lines.push(`\n${town.toUpperCase()}:`);
+            htmlLines.push(`<h3 style="margin:16px 0 8px;">${town.toUpperCase()}</h3>`);
+            for (const p of list) {
+                const dob = p.dateOfBirth ? formatMonthDayYear(new Date(p.dateOfBirth), tz) : '-';
+                lines.push(`- ${p.fullName} — ${dob}`);
+                htmlLines.push(`<div>- ${p.fullName} — ${dob}</div>`);
+            }
+        }
+
+        const subject = `Yearly turning-19 report — ${parts.year}`;
+        const recipients = await this.recipientsResolver.resolve('turning_19_yearly');
+
+        for (const r of recipients) {
+            const to = r.email ?? r.phoneE164;
+            if (!to) continue;
+            await this.notificationService.send({
+                userId: r.userId,
+                to,
+                subject,
+                message: lines.join('\n').trim(),
+                templateName: 'turning-19-report',
+                templateData: {
+                    subject,
+                    headline: subject,
+                    bodyHtml: htmlLines.join('\n'),
+                },
+                contextType: NotificationContextType.Transition,
+                contextId: `turning_19_yearly:${parts.year}`,
+            });
+        }
+    }
 
     async getActivityAttendanceStatsForUser(activityId: string, currentUser: Record<string, any>) {
         const activity = await this.activityModel.findById(activityId).lean().exec();

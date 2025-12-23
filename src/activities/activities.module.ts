@@ -8,6 +8,11 @@ import { ChildProfile, ChildProfileSchema } from '../schema/child-profile.schema
 import { Attendance, AttendanceSchema } from '../schema/attendance.schema';
 import { MonitorProfile, MonitorProfileSchema } from '../schema/monitor-profile.schema';
 import { TownScopeService } from '../common/services/town-scope.service';
+import { JobsModule } from '../jobs/jobs.module';
+import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
+import { ActivitiesInvitesCron } from '../common/cron/activities-invites.cron';
+import { ActivitiesInvitesService } from './activities-invites.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
     imports: [
@@ -18,9 +23,17 @@ import { TownScopeService } from '../common/services/town-scope.service';
             { name: Attendance.name, schema: AttendanceSchema },
             { name: MonitorProfile.name, schema: MonitorProfileSchema },
         ]),
+        JobsModule,
+        NotificationsModule,
     ],
     controllers: [ActivitiesController],
-    providers: [ActivitiesService, TownScopeService],
+    providers: [
+        ActivitiesService,
+        ActivitiesInvitesService,
+        ActivitiesInvitesCron,
+        TownScopeService,
+        RecipientsResolverService,
+    ],
     exports: [ActivitiesService],
 })
 export class ActivitiesModule {}

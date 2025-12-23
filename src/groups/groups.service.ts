@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ChildGroup, Town } from '../common/enums/activity.enum';
-import { MonitorLevel, UserRole, LifecycleStatus } from '../common/enums/user.enum';
+import { UserRole, LifecycleStatus } from '../common/enums/user.enum';
 import {
     NotificationContextType,
     ReminderKind,
@@ -18,8 +18,7 @@ import { computeAgeYears, startOfDayKey } from '../common/utils/groups.util';
 import { AppConfigService } from '../config/app-config.service';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
 import { SettingsService } from '../settings/settings.service';
-import { NotificationRecipientsSettingsRule } from '../common/interfaces/notification-recipients.interface';
-import { RecipientSelectorType } from '../common/enums/settings.enum';
+import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
 
 @Injectable()
 export class GroupsService {
@@ -35,6 +34,7 @@ export class GroupsService {
         private readonly notificationService: NotificationService,
         private readonly config: AppConfigService,
         private readonly settingsService: SettingsService,
+        private readonly recipientsResolver: RecipientsResolverService,
     ) {}
 
     async getAgeToGroupMapping(): Promise<{ bands: AgeBand[] }> {
@@ -151,7 +151,7 @@ export class GroupsService {
         oldGroup?: ChildGroup;
         newGroup?: string;
     }) {
-        const recipients = await this.resolveRecipients(params.originTown);
+        const recipients = await this.recipientsResolver.resolve('group_change', params.originTown);
 
         const message =
             params.newGroup === 'Adult'
@@ -198,110 +198,5 @@ export class GroupsService {
                 contextId: String(reminder._id),
             });
         }
-    }
-
-    private async resolveRecipients(originTown?: Town) {
-        const rule = await this.resolveRecipientRule('group_change', originTown);
-        if (!rule) {
-            return this.resolveRecipientsFallback(originTown);
-        }
-
-        const users: any[] = [];
-        for (const selector of rule.selectors ?? []) {
-            if (selector.type === RecipientSelectorType.SuperMonitors) {
-                users.push(
-                    ...(await this.userModel
-                        .find({ role: UserRole.Monitor, monitorLevel: MonitorLevel.Super })
-                        .lean()
-                        .exec()),
-                );
-            }
-
-            if (selector.type === RecipientSelectorType.TownMonitors && originTown) {
-                const profiles = await this.monitorProfileModel
-                    .find({ homeTown: originTown })
-                    .lean()
-                    .exec();
-                const ids = profiles.map((p) => p.userId);
-                users.push(
-                    ...(await this.userModel
-                        .find({ _id: { $in: ids } })
-                        .lean()
-                        .exec()),
-                );
-            }
-
-            if (selector.type === RecipientSelectorType.ExplicitUsers) {
-                users.push(
-                    ...(await this.userModel
-                        .find({ _id: { $in: selector.userIds } })
-                        .lean()
-                        .exec()),
-                );
-            }
-        }
-
-        const seen = new Set<string>();
-        return users
-            .map((u) => ({
-                userId: String(u._id),
-                email: u.email as string | undefined,
-                phoneE164: u.whatsApp?.phoneE164 as string | undefined,
-            }))
-            .filter((u) => {
-                if (seen.has(u.userId)) return false;
-                seen.add(u.userId);
-                return true;
-            });
-    }
-
-    private async resolveRecipientRule(kind: string, originTown?: Town) {
-        const settings = await this.settingsService.getNotificationRecipients();
-        const rules = settings.rules ?? [];
-
-        const byKind = rules.filter((r) => r.kind === kind);
-        if (!byKind.length) return undefined;
-
-        if (originTown) {
-            const townRule = byKind.find((r) => r.town === originTown);
-            if (townRule) return townRule as NotificationRecipientsSettingsRule;
-        }
-
-        const globalRule = byKind.find((r) => !r.town);
-        return globalRule as NotificationRecipientsSettingsRule | undefined;
-    }
-
-    private async resolveRecipientsFallback(originTown?: Town) {
-        const supers = await this.userModel
-            .find({ role: UserRole.Monitor, monitorLevel: MonitorLevel.Super })
-            .lean()
-            .exec();
-
-        let townMonitors: any[] = [];
-        if (originTown) {
-            const profiles = await this.monitorProfileModel
-                .find({ homeTown: originTown })
-                .lean()
-                .exec();
-            const ids = profiles.map((p) => p.userId);
-            townMonitors = await this.userModel
-                .find({ _id: { $in: ids } })
-                .lean()
-                .exec();
-        }
-
-        const users = [...supers, ...townMonitors];
-        const seen = new Set<string>();
-        return users
-            .map((u) => ({
-                userId: String(u._id),
-                email: u.email as string | undefined,
-                phoneE164: u.whatsApp?.phoneE164 as string | undefined,
-            }))
-            .filter((u) => {
-                if (seen.has(u.userId)) return false;
-                seen.add(u.userId);
-                return true;
-            });
     }
 }

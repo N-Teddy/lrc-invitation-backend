@@ -9,6 +9,7 @@ import { Reminder, ReminderSchema } from '../schema/reminder.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AppConfigService } from '../config/app-config.service';
 import { GroupsCron } from '../common/cron/groups.cron';
+import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
 
 @Module({
     imports: [
@@ -20,7 +21,7 @@ import { GroupsCron } from '../common/cron/groups.cron';
         ]),
         NotificationsModule,
     ],
-    providers: [GroupsService, GroupsCron, AppConfigService],
+    providers: [GroupsService, GroupsCron, AppConfigService, RecipientsResolverService],
     controllers: [GroupsController],
     exports: [GroupsService],
 })

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Notification, NotificationDocument } from '../schema/notification.schema';
@@ -17,6 +17,8 @@ import { computeBackoffMs } from '../common/utils/backoff.util';
 
 @Injectable()
 export class NotificationService {
+    private readonly logger = new Logger(NotificationService.name);
+
     constructor(
         @InjectModel(Notification.name)
         private readonly notificationModel: Model<NotificationDocument>,
@@ -123,6 +125,7 @@ export class NotificationService {
         if (notif.status === NotificationStatus.Sent) return;
 
         const attempt = (notif.attempts ?? 0) + 1;
+        const maxAttempts = notif.maxAttempts ?? 6;
         await this.notificationModel.findByIdAndUpdate(notificationId, {
             $set: { lastAttemptAt: new Date() },
             $inc: { attempts: 1 },
@@ -162,6 +165,19 @@ export class NotificationService {
                 fallbackUsed: sendResult.fallbackUsed,
                 skipReason: sendResult.skipReason,
                 error: undefined,
+                nextAttemptAt: undefined,
+            });
+            return;
+        }
+
+        if (attempt >= maxAttempts) {
+            this.logger.error(
+                `Dead-letter notification ${notificationId} after ${attempt}/${maxAttempts} attempts: ${sendResult.error ?? sendResult.skipReason ?? 'unknown_error'}`,
+            );
+            await this.notificationModel.findByIdAndUpdate(notificationId, {
+                status: NotificationStatus.Failed,
+                error: sendResult.error ?? 'Notification send failed',
+                skipReason: sendResult.skipReason ?? 'max_attempts_reached',
                 nextAttemptAt: undefined,
             });
             return;

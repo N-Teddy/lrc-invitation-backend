@@ -14,6 +14,7 @@ import { ReportingModule } from './reporting/reporting.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { SettingsModule } from './settings/settings.module';
+import { BirthdaysModule } from './birthdays/birthdays.module';
 
 @Module({
     imports: [
@@ -39,6 +40,7 @@ import { SettingsModule } from './settings/settings.module';
         ReportingModule,
         PaymentsModule,
         RemindersModule,
+        BirthdaysModule,
     ],
     controllers: [AppController],
     providers: [AppService],
