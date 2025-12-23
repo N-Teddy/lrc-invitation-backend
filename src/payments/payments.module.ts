@@ -17,4 +17,3 @@ import { User, UserSchema } from '../schema/user.schema';
     exports: [PaymentsService],
 })
 export class PaymentsModule {}
-

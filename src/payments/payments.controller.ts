@@ -37,7 +37,7 @@ export class PaymentsController {
     @Roles([UserRole.Monitor])
     @Get('me')
     @ApiOkResponse({ type: MyPaymentsResponseDto })
-    myPayments(@Query('year') year?: string, @CurrentUser() currentUser: any) {
+    myPayments(@CurrentUser() currentUser: any, @Query('year') year?: string) {
         const y = year ? Number(year) : undefined;
         return this.paymentsService.findMine(y, currentUser);
     }
@@ -63,7 +63,11 @@ export class PaymentsController {
     @Roles([UserRole.Monitor], [MonitorLevel.Super])
     @Patch(':id')
     @ApiOkResponse({ type: PaymentResponseDto })
-    update(@Param('id') id: string, @Body() dto: UpdatePaymentDto, @CurrentUser() currentUser: any) {
+    update(
+        @Param('id') id: string,
+        @Body() dto: UpdatePaymentDto,
+        @CurrentUser() currentUser: any,
+    ) {
         return this.paymentsService.update(id, dto, currentUser);
     }
 
@@ -74,4 +78,3 @@ export class PaymentsController {
         return this.paymentsService.remove(id, currentUser);
     }
 }
-

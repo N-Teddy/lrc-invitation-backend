@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Payment, PaymentDocument } from '../schema/payment.schema';
@@ -20,7 +25,8 @@ export class PaymentsService {
 
         const monitor = await this.userModel.findById(dto.monitorUserId).lean().exec();
         if (!monitor) throw new NotFoundException('Monitor not found');
-        if (monitor.role !== UserRole.Monitor) throw new BadRequestException('User is not a monitor');
+        if (monitor.role !== UserRole.Monitor)
+            throw new BadRequestException('User is not a monitor');
 
         const paidAt = new Date(dto.paidAt);
         if (Number.isNaN(paidAt.getTime())) throw new BadRequestException('Invalid paidAt');
@@ -32,7 +38,9 @@ export class PaymentsService {
             year: dto.year,
             amountFcfa: dto.amountFcfa,
             paidAt,
-            recordedByUserId: recordedByUserId ? new Types.ObjectId(String(recordedByUserId)) : undefined,
+            recordedByUserId: recordedByUserId
+                ? new Types.ObjectId(String(recordedByUserId))
+                : undefined,
         }).save();
 
         return created.toObject();
@@ -53,13 +61,20 @@ export class PaymentsService {
         if (!monitorUserId) throw new ForbiddenException('Missing user');
         if (currentUser?.role !== UserRole.Monitor) throw new ForbiddenException('Only monitors');
 
-        const filter: Record<string, any> = { monitorUserId: new Types.ObjectId(String(monitorUserId)) };
+        const filter: Record<string, any> = {
+            monitorUserId: new Types.ObjectId(String(monitorUserId)),
+        };
         if (year) filter.year = year;
 
         const items = await this.paymentModel.find(filter).sort({ paidAt: -1 }).lean().exec();
-        const summary = await this.getSummary(String(monitorUserId), year ?? new Date().getFullYear(), currentUser, {
-            allowSelf: true,
-        });
+        const summary = await this.getSummary(
+            String(monitorUserId),
+            year ?? new Date().getFullYear(),
+            currentUser,
+            {
+                allowSelf: true,
+            },
+        );
         return { items, summary };
     }
 
@@ -183,7 +198,9 @@ export class PaymentsService {
             underpaidCount,
             exactCount,
             overpaidCount,
-            byTown: [...byTownMap.values()].sort((a, b) => String(a.town).localeCompare(String(b.town))),
+            byTown: [...byTownMap.values()].sort((a, b) =>
+                String(a.town).localeCompare(String(b.town)),
+            ),
         };
     }
 
@@ -194,7 +211,8 @@ export class PaymentsService {
         if (dto.monitorUserId) {
             const monitor = await this.userModel.findById(dto.monitorUserId).lean().exec();
             if (!monitor) throw new NotFoundException('Monitor not found');
-            if (monitor.role !== UserRole.Monitor) throw new BadRequestException('User is not a monitor');
+            if (monitor.role !== UserRole.Monitor)
+                throw new BadRequestException('User is not a monitor');
             update.monitorUserId = new Types.ObjectId(dto.monitorUserId);
         }
         if (dto.year !== undefined) update.year = dto.year;
@@ -230,4 +248,3 @@ export class PaymentsService {
         }
     }
 }
-

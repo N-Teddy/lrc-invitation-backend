@@ -122,4 +122,3 @@ export class PaymentYearOverviewDto {
     @ApiProperty({ type: [PaymentTownOverviewDto] })
     byTown: PaymentTownOverviewDto[];
 }
-

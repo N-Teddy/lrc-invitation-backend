@@ -11,6 +11,7 @@ import { GroupsModule } from './groups/groups.module';
 import { ActivitiesModule } from './activities/activities.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { ReportingModule } from './reporting/reporting.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
     imports: [
@@ -33,6 +34,7 @@ import { ReportingModule } from './reporting/reporting.module';
         ActivitiesModule,
         AttendanceModule,
         ReportingModule,
+        PaymentsModule,
     ],
     controllers: [AppController],
     providers: [AppService],
