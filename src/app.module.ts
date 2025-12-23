@@ -12,6 +12,7 @@ import { ActivitiesModule } from './activities/activities.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { PaymentsModule } from './payments/payments.module';
+import { RemindersModule } from './reminders/reminders.module';
 
 @Module({
     imports: [
@@ -35,6 +36,7 @@ import { PaymentsModule } from './payments/payments.module';
         AttendanceModule,
         ReportingModule,
         PaymentsModule,
+        RemindersModule,
     ],
     controllers: [AppController],
     providers: [AppService],

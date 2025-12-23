@@ -17,6 +17,27 @@ export function scheduleNextDailyRun(
     schedule();
 }
 
+export function scheduleEveryMs(
+    ms: number,
+    handler: () => Promise<void> | void,
+    opts?: { initialDelayMs?: number },
+) {
+    const initialDelayMs = opts?.initialDelayMs ?? 1000;
+    const tick = () => {
+        setTimeout(async () => {
+            try {
+                await handler();
+            } finally {
+                tick();
+            }
+        }, ms);
+    };
+    setTimeout(() => {
+        void handler();
+        tick();
+    }, initialDelayMs);
+}
+
 function getNextDailyTime(now: Date, hour: number, minute: number, timeZone: string) {
     // Compute "today at HH:MM" in the given TZ, then if past, add a day.
     const parts = getDatePartsInTimeZone(now, timeZone);

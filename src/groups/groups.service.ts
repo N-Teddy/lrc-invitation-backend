@@ -178,6 +178,8 @@ export class GroupsService {
             channel: this.config.notificationProvider === 'whatsapp' ? 'whatsapp' : 'email',
             status: ReminderStatus.Active,
             recipients: recipients.map((r) => r.userId),
+            awaitingAckUserIds: recipients.map((r) => r.userId),
+            acknowledgedByUserIds: [],
             context: {
                 childId: params.childId,
                 oldGroup: params.oldGroup,
