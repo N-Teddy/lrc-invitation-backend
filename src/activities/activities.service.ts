@@ -14,12 +14,11 @@ import {
 import { ActivityType, ChildGroup, TargetingCode, Town } from '../common/enums/activity.enum';
 import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { Activity, ActivityDocument } from '../schema/activity.schema';
-import { Settings, SettingsDocument } from '../schema/settings.schema';
 import { User, UserDocument } from '../schema/user.schema';
 import { ChildProfile, ChildProfileDocument } from '../schema/child-profile.schema';
 import { Attendance, AttendanceDocument } from '../schema/attendance.schema';
 import { AttendanceRoleAtTime } from '../common/enums/attendance.enum';
-import { DEFAULT_AGE_TO_GROUP_MAPPING, AgeBand } from '../common/constants/groups.constants';
+import { AgeBand } from '../common/constants/groups.constants';
 import { computeAgeYears } from '../common/utils/groups.util';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
 import { subtractMonths } from '../common/utils/date.util';
@@ -28,18 +27,19 @@ import {
     targetGroupsForTargetingCode,
 } from '../common/utils/activity-targeting.util';
 import { TownScopeService } from '../common/services/town-scope.service';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class ActivitiesService {
     constructor(
         @InjectModel(Activity.name) private readonly activityModel: Model<ActivityDocument>,
-        @InjectModel(Settings.name) private readonly settingsModel: Model<SettingsDocument>,
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
         @InjectModel(ChildProfile.name)
         private readonly childProfileModel: Model<ChildProfileDocument>,
         @InjectModel(Attendance.name)
         private readonly attendanceModel: Model<AttendanceDocument>,
         private readonly townScopeService: TownScopeService,
+        private readonly settingsService: SettingsService,
     ) {}
 
     async create(dto: CreateActivityDto, currentUser: Record<string, any>) {
@@ -533,14 +533,7 @@ export class ActivitiesService {
      */
 
     private async getAgeToGroupMapping(): Promise<{ bands: AgeBand[] }> {
-        const existing = await this.settingsModel
-            .findOne({ key: 'ageToGroupMapping' })
-            .lean()
-            .exec();
-        if (existing?.value?.bands?.length) {
-            return { bands: existing.value.bands as AgeBand[] };
-        }
-        return { bands: DEFAULT_AGE_TO_GROUP_MAPPING };
+        return this.settingsService.getAgeToGroupMapping();
     }
 
     private async computeInvitations(activity: Record<string, any>) {

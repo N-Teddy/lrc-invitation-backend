@@ -13,6 +13,7 @@ import { AttendanceModule } from './attendance/attendance.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RemindersModule } from './reminders/reminders.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
     imports: [
@@ -30,6 +31,7 @@ import { RemindersModule } from './reminders/reminders.module';
         UsersModule,
         AuthModule,
         NotificationsModule,
+        SettingsModule,
         MediaModule,
         GroupsModule,
         ActivitiesModule,

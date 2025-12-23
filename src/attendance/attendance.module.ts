@@ -6,7 +6,6 @@ import { Attendance, AttendanceSchema } from '../schema/attendance.schema';
 import { Activity, ActivitySchema } from '../schema/activity.schema';
 import { User, UserSchema } from '../schema/user.schema';
 import { ChildProfile, ChildProfileSchema } from '../schema/child-profile.schema';
-import { Settings, SettingsSchema } from '../schema/settings.schema';
 import { ReportingModule } from '../reporting/reporting.module';
 import { MonitorProfile, MonitorProfileSchema } from '../schema/monitor-profile.schema';
 import { TownScopeService } from '../common/services/town-scope.service';
@@ -18,7 +17,6 @@ import { TownScopeService } from '../common/services/town-scope.service';
             { name: Activity.name, schema: ActivitySchema },
             { name: User.name, schema: UserSchema },
             { name: ChildProfile.name, schema: ChildProfileSchema },
-            { name: Settings.name, schema: SettingsSchema },
             { name: MonitorProfile.name, schema: MonitorProfileSchema },
         ]),
         ReportingModule,

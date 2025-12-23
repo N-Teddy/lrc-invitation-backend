@@ -5,17 +5,34 @@ import { extname, join } from 'path';
 import { AppConfigService } from '../config/app-config.service';
 import { CloudinaryService } from '../common/third-party/cloudinary.service';
 import { UploadedFile } from '../common/interfaces/uploaded-file.interface';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class MediaService {
     constructor(
         private readonly config: AppConfigService,
         private readonly cloudinaryService: CloudinaryService,
+        private readonly settingsService: SettingsService,
     ) {}
 
     async uploadProfileImage(file: UploadedFile) {
+        const mediaSettings = await this.settingsService.getMediaStorageSettings();
+
         if (!file.mimetype?.startsWith('image/')) {
             throw new BadRequestException('Invalid file type');
+        }
+        if (
+            mediaSettings.allowedMimeTypes?.length &&
+            !mediaSettings.allowedMimeTypes.includes(file.mimetype)
+        ) {
+            throw new BadRequestException('Invalid file type');
+        }
+        if (
+            typeof mediaSettings.maxSizeBytes === 'number' &&
+            mediaSettings.maxSizeBytes > 0 &&
+            file.size > mediaSettings.maxSizeBytes
+        ) {
+            throw new BadRequestException('File too large');
         }
 
         if (this.config.storageProvider === 'cloudinary') {
