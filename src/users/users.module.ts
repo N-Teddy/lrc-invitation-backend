@@ -4,11 +4,17 @@ import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { User, UserSchema } from '../schema/user.schema';
 import { MediaModule } from '../media/media.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { AppConfigService } from '../config/app-config.service';
 
 @Module({
-    imports: [MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]), MediaModule],
+    imports: [
+        MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+        MediaModule,
+        NotificationsModule,
+    ],
     controllers: [UsersController],
-    providers: [UsersService],
+    providers: [UsersService, AppConfigService],
     exports: [UsersService],
 })
 export class UsersModule {}

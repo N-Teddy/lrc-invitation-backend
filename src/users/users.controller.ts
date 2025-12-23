@@ -15,6 +15,10 @@ import {
 } from '@nestjs/common';
 import { MediaService } from '../media/media.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { NotificationService } from '../notifications/notifications.service';
+import { NotificationContextType } from '../common/enums/notification.enum';
+import { AppConfigService } from '../config/app-config.service';
+import { ApproveUserResponseDto } from '../dtos/response/user-approval.dto';
 
 @ApiBearerAuth()
 @ApiTags('users')
@@ -23,6 +27,8 @@ export class UsersController {
     constructor(
         private readonly usersService: UsersService,
         private readonly mediaService: MediaService,
+        private readonly notificationService: NotificationService,
+        private readonly config: AppConfigService,
     ) {}
 
     @Roles([UserRole.Monitor], [MonitorLevel.Super])
@@ -51,6 +57,35 @@ export class UsersController {
     @ApiOkResponse({ type: UserResponseDto })
     update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
         return this.usersService.update(id, dto);
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Super])
+    @Post(':id/approve')
+    @ApiOkResponse({ type: ApproveUserResponseDto })
+    async approve(@Param('id') id: string) {
+        const { user, magicToken } = await this.usersService.approveMonitorRegistration(id);
+
+        const to = user.email as string | undefined;
+        const magicLinkSent = !!(to && magicToken);
+        if (magicLinkSent) {
+            const magicLinkUrl = `${this.config.appBaseUrl}/auth/magic?token=${magicToken}`;
+            await this.notificationService.send({
+                userId: user.id,
+                to,
+                subject: 'Your account is approved',
+                message: `Hello ${user.fullName},\n\nYour account has been approved. Use this link to sign in: ${magicLinkUrl}\nThis link expires in 30 minutes.`,
+                templateName: 'magic-link',
+                templateData: {
+                    fullName: user.fullName,
+                    magicLink: magicLinkUrl,
+                    expiresInMinutes: 30,
+                },
+                contextType: NotificationContextType.Reminder,
+                contextId: user.id,
+            });
+        }
+
+        return { approved: true, magicLinkSent, user };
     }
 
     @Roles([UserRole.Monitor])

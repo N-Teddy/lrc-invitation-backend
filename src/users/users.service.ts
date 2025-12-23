@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../schema/user.schema';
 import { CreateUserData, UpdateUserData } from '../common/interfaces/user-data.interface';
+import { v4 as uuidv4 } from 'uuid';
+import { UserRole } from '../common/enums/user.enum';
 
 @Injectable()
 export class UsersService {
@@ -128,6 +130,48 @@ export class UsersService {
         if (!res) {
             throw new NotFoundException('User not found');
         }
+    }
+
+    async approveMonitorRegistration(userId: string): Promise<{
+        user: Record<string, any>;
+        magicToken?: string;
+        magicExpiresAt?: Date;
+    }> {
+        const existing = await this.userModel.findById(userId).lean().exec();
+        if (!existing) {
+            throw new NotFoundException('User not found');
+        }
+        if (existing.role !== UserRole.Monitor) {
+            throw new NotFoundException('Monitor not found');
+        }
+
+        const isPending = !!existing.registrationPendingApproval;
+        const magicToken = uuidv4();
+        const magicExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+        const updated = await this.userModel
+            .findByIdAndUpdate(
+                userId,
+                {
+                    $set: {
+                        registrationPendingApproval: false,
+                        ...(isPending ? { magicToken, magicExpiresAt } : {}),
+                    },
+                },
+                { new: true },
+            )
+            .lean()
+            .exec();
+
+        if (!updated) {
+            throw new NotFoundException('User not found');
+        }
+
+        return {
+            user: this.normalizeUser(updated),
+            magicToken: isPending ? magicToken : undefined,
+            magicExpiresAt: isPending ? magicExpiresAt : undefined,
+        };
     }
 
     private normalizeUser(user: Record<string, any>): Record<string, any> {
