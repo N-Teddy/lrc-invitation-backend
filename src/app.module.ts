@@ -9,6 +9,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { MediaModule } from './media/media.module';
 import { GroupsModule } from './groups/groups.module';
 import { ActivitiesModule } from './activities/activities.module';
+import { AttendanceModule } from './attendance/attendance.module';
 
 @Module({
     imports: [
@@ -29,6 +30,7 @@ import { ActivitiesModule } from './activities/activities.module';
         MediaModule,
         GroupsModule,
         ActivitiesModule,
+        AttendanceModule,
     ],
     controllers: [AppController],
     providers: [AppService],
