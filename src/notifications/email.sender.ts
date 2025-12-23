@@ -4,24 +4,25 @@ import {
     NotificationSender,
     SendOptions,
 } from '../common/interfaces/notification-sender.interface';
+import { AppConfigService } from '../config/app-config.service';
 
 @Injectable()
 export class EmailNotificationSender implements NotificationSender {
     private readonly logger = new Logger(EmailNotificationSender.name);
     private transporter?: Transporter;
 
-    constructor() {
+    constructor(private readonly config: AppConfigService) {
         import('nodemailer')
             .then((nodemailer) => {
                 this.transporter = nodemailer.createTransport({
-                    host: process.env.MAIL_HOST ?? 'localhost',
-                    port: Number(process.env.MAIL_PORT ?? 1025),
+                    host: this.config.mailHost,
+                    port: this.config.mailPort,
                     secure: false,
                     auth:
-                        process.env.MAIL_USER && process.env.MAIL_PASS
+                        this.config.mailUser && this.config.mailPass
                             ? {
-                                  user: process.env.MAIL_USER,
-                                  pass: process.env.MAIL_PASS,
+                                  user: this.config.mailUser,
+                                  pass: this.config.mailPass,
                               }
                             : undefined,
                 });
@@ -40,7 +41,7 @@ export class EmailNotificationSender implements NotificationSender {
                 'Email transport not configured; install nodemailer and set MAIL_* envs.',
             );
         }
-        const from = process.env.MAIL_FROM ?? 'LRC Jeunesse <no-reply@lrc-jeunesse.local>';
+        const from = this.config.mailFrom;
         try {
             await this.transporter.sendMail({
                 from,

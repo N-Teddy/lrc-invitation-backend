@@ -7,6 +7,8 @@ import { RolesGuard } from './guards/roles.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { GoogleService } from '../common/third-party/google.service';
+import { AppConfigService } from '../config/app-config.service';
 
 @Module({
     imports: [
@@ -27,6 +29,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
         },
         Reflector,
         AuthService,
+        GoogleService,
+        AppConfigService,
     ],
     controllers: [AuthController],
 })

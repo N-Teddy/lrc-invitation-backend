@@ -11,6 +11,7 @@ import { EmailNotificationSender } from './email.sender';
 import { WhatsAppNotificationSender } from './whatsapp.stub.sender';
 import { SendOptions } from '../common/interfaces/notification-sender.interface';
 import { NotificationsGateway } from './notifications.gateway';
+import { AppConfigService } from '../config/app-config.service';
 
 @Injectable()
 export class NotificationService {
@@ -22,8 +23,9 @@ export class NotificationService {
         private readonly emailSender: EmailNotificationSender,
         private readonly whatsappSender: WhatsAppNotificationSender,
         private readonly notificationsGateway: NotificationsGateway,
+        private readonly config: AppConfigService,
     ) {
-        const provider = process.env.NOTIFICATION_PROVIDER ?? 'email';
+        const provider = this.config.notificationProvider;
         this.provider = provider === 'whatsapp' ? Channel.WhatsApp : Channel.Email;
     }
 

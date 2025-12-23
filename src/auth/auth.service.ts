@@ -1,24 +1,25 @@
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { OAuth2Client } from 'google-auth-library';
 import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from '../users/users.service';
 import { RegisterRequestDto, GoogleSignInDto } from '../dtos/request/auth.dto';
 import { MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { NotificationService } from '../notifications/notifications.service';
 import { NotificationContextType } from '../common/enums/notification.enum';
+import { AppConfigService } from '../config/app-config.service';
+import { GoogleService } from '../common/third-party/google.service';
 
 const ACCESS_TOKEN_EXPIRES_IN = '24h';
 const REFRESH_TOKEN_EXPIRES_IN = '7d';
 
 @Injectable()
 export class AuthService {
-    private googleClient = new OAuth2Client();
-
     constructor(
         private readonly usersService: UsersService,
         private readonly jwtService: JwtService,
         private readonly notificationService: NotificationService,
+        private readonly config: AppConfigService,
+        private readonly googleService: GoogleService,
     ) {}
 
     async register(dto: RegisterRequestDto) {
@@ -97,11 +98,7 @@ export class AuthService {
     }
 
     async googleSignIn(dto: GoogleSignInDto) {
-        const ticket = await this.googleClient.verifyIdToken({
-            idToken: dto.idToken,
-            audience: process.env.GOOGLE_CLIENT_ID,
-        });
-        const payload = ticket.getPayload();
+        const payload = await this.googleService.verifyIdToken(dto.idToken);
         if (!payload?.sub || !payload.email) {
             throw new UnauthorizedException('Invalid Google token');
         }
@@ -136,18 +133,17 @@ export class AuthService {
     }
 
     private buildMagicLink(token: string): string {
-        const base = process.env.APP_BASE_URL ?? 'http://localhost:3000';
-        return `${base}/auth/magic?token=${token}`;
+        return `${this.config.appBaseUrl}/auth/magic?token=${token}`;
     }
 
     private async generateTokens(userId: string, role: UserRole, monitorLevel?: MonitorLevel) {
         const payload = { sub: String(userId), role, monitorLevel };
         const accessToken = await this.jwtService.signAsync(payload, {
-            secret: process.env.JWT_ACCESS_SECRET,
+            secret: this.config.jwtAccessSecret,
             expiresIn: ACCESS_TOKEN_EXPIRES_IN,
         });
         const refreshToken = await this.jwtService.signAsync(payload, {
-            secret: process.env.JWT_REFRESH_SECRET,
+            secret: this.config.jwtRefreshSecret,
             expiresIn: REFRESH_TOKEN_EXPIRES_IN,
         });
         return { accessToken, refreshToken };

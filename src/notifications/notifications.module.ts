@@ -5,6 +5,7 @@ import { NotificationService } from './notifications.service';
 import { EmailNotificationSender } from './email.sender';
 import { WhatsAppNotificationSender } from './whatsapp.stub.sender';
 import { NotificationsGateway } from './notifications.gateway';
+import { AppConfigService } from '../config/app-config.service';
 
 @Module({
     imports: [MongooseModule.forFeature([{ name: Notification.name, schema: NotificationSchema }])],
@@ -13,6 +14,7 @@ import { NotificationsGateway } from './notifications.gateway';
         EmailNotificationSender,
         WhatsAppNotificationSender,
         NotificationsGateway,
+        AppConfigService,
     ],
     exports: [NotificationService, NotificationsGateway],
 })
