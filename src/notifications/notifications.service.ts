@@ -32,29 +32,49 @@ export class NotificationService {
     async send(
         options: Omit<SendOptions, 'contextType'> & { contextType: NotificationContextType },
     ) {
+        const subject = options.subject ?? 'Notification';
+        const templateName =
+            options.templateName ??
+            (this.provider === Channel.Email ? 'generic-notification' : undefined);
+        const templateData =
+            options.templateData ??
+            (templateName === 'generic-notification'
+                ? {
+                      subject,
+                      headline: subject,
+                      message: options.message,
+                  }
+                : undefined);
+
         const notif = new this.notificationModel({
             channel: this.provider,
             toUserId: options.userId,
             contextType: options.contextType,
             contextId: options.contextId,
             status: NotificationStatus.Queued,
-            templateName: options.subject,
-            templateLanguage: options.subject,
-            languageUsed: options.subject,
+            templateName,
+            templateLanguage: 'en',
+            languageUsed: 'en',
+            languageFallbackUsed: false,
             interactiveOptions: [],
         });
         await notif.save();
 
         try {
             if (this.provider === Channel.Email) {
-                await this.emailSender.send(options);
+                await this.emailSender.send({
+                    ...options,
+                    subject,
+                    templateName,
+                    templateData,
+                });
             } else {
                 await this.whatsappSender.send(options);
             }
             await this.notificationModel.findByIdAndUpdate(notif._id, {
                 status: NotificationStatus.Sent,
                 sentAt: new Date(),
-                languageUsed: options.subject,
+                languageUsed: 'en',
             });
             this.notificationsGateway.emitToUser(options.userId, 'notification', {
                 contextType: options.contextType,

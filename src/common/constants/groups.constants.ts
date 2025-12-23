@@ -13,3 +13,11 @@ export const DEFAULT_AGE_TO_GROUP_MAPPING: AgeBand[] = [
     { group: ChildGroup.C, minAgeYears: 12, maxAgeYears: 14 },
     { group: ChildGroup.D, minAgeYears: 15, maxAgeYears: 18 },
 ];
+
+export const CHILD_GROUP_ORDER: ChildGroup[] = [
+    ChildGroup.PreA,
+    ChildGroup.A,
+    ChildGroup.B,
+    ChildGroup.C,
+    ChildGroup.D,
+];

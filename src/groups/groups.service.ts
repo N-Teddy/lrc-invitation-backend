@@ -17,6 +17,7 @@ import { Reminder, ReminderDocument } from '../schema/reminder.schema';
 import { DEFAULT_AGE_TO_GROUP_MAPPING, AgeBand } from '../common/constants/groups.constants';
 import { computeAgeYears, startOfDayKey } from '../common/utils/groups.util';
 import { AppConfigService } from '../config/app-config.service';
+import { computeGroupFromAge } from '../common/utils/age-group.util';
 
 @Injectable()
 export class GroupsService {
@@ -86,7 +87,7 @@ export class GroupsService {
             const currentGroup = profile?.currentGroup as ChildGroup | undefined;
             const computedGroup = shouldArchive
                 ? undefined
-                : this.computeGroupFromAge(ageYears, mapping.bands);
+                : computeGroupFromAge(ageYears, mapping.bands);
 
             const needsGroupUpdate =
                 !shouldArchive && computedGroup && computedGroup !== currentGroup;
@@ -155,16 +156,6 @@ export class GroupsService {
         return { processedChildren, updatedGroups, archivedAdults, remindersCreated };
     }
 
-    private computeGroupFromAge(ageYears: number, bands: AgeBand[]) {
-        for (const band of bands) {
-            if (ageYears >= band.minAgeYears && ageYears <= band.maxAgeYears) {
-                return band.group;
-            }
-        }
-        // Default if out of range but still child: keep D.
-        return ChildGroup.D;
-    }
-
     private async createAndSendGroupChangeReminder(params: {
         childId: string;
         childName: string;
@@ -207,6 +198,12 @@ export class GroupsService {
                 to,
                 subject: 'Group change reminder',
                 message,
+                templateName: 'generic-notification',
+                templateData: {
+                    subject: 'Group change reminder',
+                    headline: 'Group change reminder',
+                    message,
+                },
                 contextType: NotificationContextType.GroupChange,
                 contextId: String(reminder._id),
             });

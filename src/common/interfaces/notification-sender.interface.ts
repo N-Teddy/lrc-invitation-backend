@@ -5,6 +5,8 @@ export interface SendOptions {
     to: string;
     subject?: string;
     message: string;
+    templateName?: string;
+    templateData?: Record<string, any>;
     contextType: NotificationContextType;
     contextId: string;
 }

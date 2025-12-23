@@ -1,10 +1,10 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
-import { Observable, catchError, map, throwError } from 'rxjs';
+import { Observable, map } from 'rxjs';
+import { Types } from 'mongoose';
 
 interface StandardResponse<T> {
     success: boolean;
     data?: T;
-    error?: any;
 }
 
 @Injectable()
@@ -13,28 +13,39 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, StandardRespon
         return next.handle().pipe(
             map((data) => ({
                 success: true,
-                data: this.attachId(data),
+                data: this.normalize(data),
             })),
-            catchError((error) =>
-                throwError(() => ({
-                    success: false,
-                    error: error?.message ?? 'Unexpected error',
-                })),
-            ),
         );
     }
 
-    private attachId(value: any): any {
+    private normalize(value: any): any {
         if (Array.isArray(value)) {
-            return value.map((item) => this.attachId(item));
+            return value.map((item) => this.normalize(item));
         }
+
+        if (value instanceof Types.ObjectId) {
+            return String(value);
+        }
+
+        if (value instanceof Date) {
+            return value;
+        }
+
         if (value && typeof value === 'object') {
-            if (value._id) {
-                const id = value.id ? value.id : String(value._id);
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { _id, ...rest } = value;
-                return { ...rest, id };
+            const plain =
+                typeof (value as any).toObject === 'function' ? (value as any).toObject() : value;
+            const out: Record<string, any> = {};
+
+            for (const [k, v] of Object.entries(plain)) {
+                if (k === '_id') continue;
+                out[k] = this.normalize(v);
             }
+
+            const idSource = (plain as any)._id ?? (plain as any).id;
+            if (idSource !== undefined) {
+                out.id = this.normalize(idSource);
+            }
+            return out;
         }
         return value;
     }

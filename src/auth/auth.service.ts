@@ -26,6 +26,9 @@ export class AuthService {
         if (dto.role === UserRole.Child) {
             throw new BadRequestException('Children are created by staff.');
         }
+        if (this.config.notificationProvider === 'email' && !dto.email) {
+            throw new BadRequestException('Email is required for registration');
+        }
         const isMonitorPending =
             dto.role === UserRole.Monitor &&
             (dto.monitorLevel === MonitorLevel.Aspiring ||
@@ -55,6 +58,12 @@ export class AuthService {
             to: user.email ?? '',
             subject: 'Your sign-in link',
             message: `Hello ${user.fullName},\n\nUse this link to sign in: ${magicLinkUrl}\nThis link expires in 30 minutes.`,
+            templateName: 'magic-link',
+            templateData: {
+                fullName: user.fullName,
+                magicLink: magicLinkUrl,
+                expiresInMinutes: 30,
+            },
             contextType: NotificationContextType.Reminder,
             contextId: String(user._id),
         });

@@ -5,6 +5,7 @@ import {
     SendOptions,
 } from '../common/interfaces/notification-sender.interface';
 import { AppConfigService } from '../config/app-config.service';
+import { renderEmailTemplate } from '../common/utils/template.util';
 
 @Injectable()
 export class EmailNotificationSender implements NotificationSender {
@@ -14,7 +15,8 @@ export class EmailNotificationSender implements NotificationSender {
     constructor(private readonly config: AppConfigService) {
         import('nodemailer')
             .then((nodemailer) => {
-                this.transporter = nodemailer.createTransport({
+                const nm: any = (nodemailer as any)?.default ?? nodemailer;
+                this.transporter = nm.createTransport({
                     host: this.config.mailHost,
                     port: this.config.mailPort,
                     secure: false,
@@ -43,11 +45,23 @@ export class EmailNotificationSender implements NotificationSender {
         }
         const from = this.config.mailFrom;
         try {
+            const subject = options.subject ?? 'Notification';
+            const templateName = options.templateName ?? 'generic-notification';
+            const templateData =
+                options.templateData ??
+                ({
+                    subject,
+                    headline: subject,
+                    message: options.message,
+                } as Record<string, any>);
+            const html = renderEmailTemplate(templateName, templateData);
+
             await this.transporter.sendMail({
                 from,
                 to: options.to,
-                subject: options.subject ?? 'Notification',
+                subject,
                 text: options.message,
+                html,
             });
         } catch (err) {
             this.logger.error(`Failed to send email to ${options.to}: ${err?.message ?? err}`);
