@@ -17,6 +17,7 @@ import { SettingsModule } from './settings/settings.module';
 import { BirthdaysModule } from './birthdays/birthdays.module';
 import { ActionsModule } from './actions/actions.module';
 import { ConversationsModule } from './conversations/conversations.module';
+import { InteractionsModule } from './interactions/interactions.module';
 
 @Module({
     imports: [
@@ -45,6 +46,7 @@ import { ConversationsModule } from './conversations/conversations.module';
         BirthdaysModule,
         ConversationsModule,
         ActionsModule,
+        InteractionsModule,
     ],
     controllers: [AppController],
     providers: [AppService],

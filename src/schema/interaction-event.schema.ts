@@ -23,6 +23,10 @@ export class InteractionEvent {
 
     @Prop({ type: Object })
     meta?: Record<string, any>;
+
+    // Added for TypeScript typing (timestamps are enabled via @Schema option).
+    createdAt?: Date;
+    updatedAt?: Date;
 }
 
 export const InteractionEventSchema = SchemaFactory.createForClass(InteractionEvent);
