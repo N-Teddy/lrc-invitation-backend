@@ -17,9 +17,12 @@ import { Activity, ActivityDocument } from '../schema/activity.schema';
 import { Settings, SettingsDocument } from '../schema/settings.schema';
 import { User, UserDocument } from '../schema/user.schema';
 import { ChildProfile, ChildProfileDocument } from '../schema/child-profile.schema';
+import { Attendance, AttendanceDocument } from '../schema/attendance.schema';
+import { AttendanceRoleAtTime } from '../common/enums/attendance.enum';
 import { DEFAULT_AGE_TO_GROUP_MAPPING, AgeBand } from '../common/constants/groups.constants';
 import { computeAgeYears } from '../common/utils/groups.util';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
+import { subtractMonths } from '../common/utils/date.util';
 import {
     isValidConferenceDuration,
     targetGroupsForTargetingCode,
@@ -33,6 +36,8 @@ export class ActivitiesService {
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
         @InjectModel(ChildProfile.name)
         private readonly childProfileModel: Model<ChildProfileDocument>,
+        @InjectModel(Attendance.name)
+        private readonly attendanceModel: Model<AttendanceDocument>,
     ) {}
 
     async create(dto: CreateActivityDto, currentUser: Record<string, any>) {
@@ -133,6 +138,166 @@ export class ActivitiesService {
             .exec();
         if (!updated) throw new NotFoundException('Activity not found');
         return updated;
+    }
+
+    async getConferenceEligibility(activityId: string) {
+        const activity = await this.findOneOrFail(activityId);
+        if (activity.type !== ActivityType.Conference) {
+            throw new BadRequestException('Eligibility highlight is only for conferences');
+        }
+
+        const conferenceStart = new Date(activity.startDate);
+        const windowStart = subtractMonths(conferenceStart, 3);
+
+        const invitedIds = (activity.invitedChildrenUserIds ?? []).map((x: any) =>
+            typeof x === 'string' ? new Types.ObjectId(x) : (x as Types.ObjectId),
+        );
+
+        if (!invitedIds.length) {
+            return {
+                activityId,
+                windowStart,
+                windowEnd: conferenceStart,
+                invitedCount: 0,
+                qualifiedCount: 0,
+                flaggedCount: 0,
+                flaggedChildren: [],
+            };
+        }
+
+        const candidateActivities = await this.activityModel
+            .find({
+                type: { $ne: ActivityType.Conference },
+                startDate: { $gte: windowStart, $lt: conferenceStart },
+            })
+            .select({ _id: 1, targetingCode: 1, startDate: 1 })
+            .lean()
+            .exec();
+
+        if (!candidateActivities.length) {
+            return {
+                activityId,
+                windowStart,
+                windowEnd: conferenceStart,
+                invitedCount: invitedIds.length,
+                qualifiedCount: 0,
+                flaggedCount: invitedIds.length,
+                flaggedChildren: invitedIds.map((idObj) => ({
+                    userId: String(idObj),
+                    reason: 'No qualifying activity attendance in last 3 months',
+                })),
+            };
+        }
+
+        const activityById = new Map<
+            string,
+            { targetingCode: TargetingCode; startDate: Date; targetGroups: ChildGroup[] }
+        >();
+        for (const a of candidateActivities) {
+            const targetingCode = a.targetingCode as TargetingCode;
+            activityById.set(String(a._id), {
+                targetingCode,
+                startDate: new Date(a.startDate),
+                targetGroups: targetGroupsForTargetingCode(targetingCode),
+            });
+        }
+
+        const attendanceDocs = await this.attendanceModel
+            .find({
+                activityId: { $in: candidateActivities.map((a) => a._id) },
+                entries: {
+                    $elemMatch: {
+                        userId: { $in: invitedIds },
+                        present: true,
+                        roleAtTime: AttendanceRoleAtTime.Child,
+                    },
+                },
+            })
+            .lean()
+            .exec();
+
+        const invitedIdStrings = invitedIds.map((x) => String(x));
+        const invitedSet = new Set(invitedIdStrings);
+        const qualified = new Set<string>();
+
+        const fallbackChecks: Array<{
+            userId: string;
+            activityStart: Date;
+            targetGroups: ChildGroup[];
+        }> = [];
+
+        for (const doc of attendanceDocs) {
+            const meta = activityById.get(String(doc.activityId));
+            if (!meta) continue;
+
+            for (const entry of doc.entries ?? []) {
+                const userId = String((entry as any).userId);
+                if (!invitedSet.has(userId)) continue;
+                if (!(entry as any).present) continue;
+                if ((entry as any).roleAtTime !== AttendanceRoleAtTime.Child) continue;
+                if (qualified.has(userId)) continue;
+
+                const group = (entry as any).groupAtTime as ChildGroup | undefined;
+                if (!group) {
+                    fallbackChecks.push({
+                        userId,
+                        activityStart: meta.startDate,
+                        targetGroups: meta.targetGroups,
+                    });
+                    continue;
+                }
+
+                if (meta.targetGroups.includes(group)) {
+                    qualified.add(userId);
+                }
+            }
+        }
+
+        if (fallbackChecks.length) {
+            const mapping = await this.getAgeToGroupMapping();
+            const uniqueUserIds = [...new Set(fallbackChecks.map((x) => x.userId))];
+
+            const users = await this.userModel
+                .find({ _id: { $in: uniqueUserIds.map((id) => new Types.ObjectId(id)) } })
+                .select({ _id: 1, dateOfBirth: 1 })
+                .lean()
+                .exec();
+
+            const dobById = new Map<string, Date | undefined>();
+            for (const u of users) {
+                dobById.set(String(u._id), u.dateOfBirth ? new Date(u.dateOfBirth) : undefined);
+            }
+
+            for (const item of fallbackChecks) {
+                if (qualified.has(item.userId)) continue;
+                const dob = dobById.get(item.userId);
+                if (!dob) continue;
+                const group = computeGroupFromAge(
+                    computeAgeYears(dob, item.activityStart),
+                    mapping.bands,
+                );
+                if (item.targetGroups.includes(group)) {
+                    qualified.add(item.userId);
+                }
+            }
+        }
+
+        const flaggedChildren = invitedIdStrings
+            .filter((id) => !qualified.has(id))
+            .map((id) => ({
+                userId: id,
+                reason: 'No qualifying activity attendance in last 3 months',
+            }));
+
+        return {
+            activityId,
+            windowStart,
+            windowEnd: conferenceStart,
+            invitedCount: invitedIds.length,
+            qualifiedCount: qualified.size,
+            flaggedCount: flaggedChildren.length,
+            flaggedChildren,
+        };
     }
 
     private normalizeCreatePayload(dto: CreateActivityDto, currentUser: Record<string, any>) {

@@ -10,6 +10,7 @@ import {
     UpdateActivityInvitationsDto,
 } from '../dtos/request/activity.dto';
 import { ActivityResponseDto } from '../dtos/response/activity.dto';
+import { ConferenceEligibilityResponseDto } from '../dtos/response/conference-eligibility.dto';
 import { ActivitiesService } from './activities.service';
 
 @ApiBearerAuth()
@@ -42,6 +43,13 @@ export class ActivitiesController {
     @ApiOkResponse({ type: ActivityResponseDto })
     findOne(@Param('id') id: string) {
         return this.activitiesService.findOneOrFail(id);
+    }
+
+    @Roles([UserRole.Monitor])
+    @Get(':id/conference-eligibility')
+    @ApiOkResponse({ type: ConferenceEligibilityResponseDto })
+    conferenceEligibility(@Param('id') id: string) {
+        return this.activitiesService.getConferenceEligibility(id);
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])

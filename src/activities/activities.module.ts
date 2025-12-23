@@ -6,6 +6,7 @@ import { Activity, ActivitySchema } from '../schema/activity.schema';
 import { Settings, SettingsSchema } from '../schema/settings.schema';
 import { User, UserSchema } from '../schema/user.schema';
 import { ChildProfile, ChildProfileSchema } from '../schema/child-profile.schema';
+import { Attendance, AttendanceSchema } from '../schema/attendance.schema';
 
 @Module({
     imports: [
@@ -14,6 +15,7 @@ import { ChildProfile, ChildProfileSchema } from '../schema/child-profile.schema
             { name: Settings.name, schema: SettingsSchema },
             { name: User.name, schema: UserSchema },
             { name: ChildProfile.name, schema: ChildProfileSchema },
+            { name: Attendance.name, schema: AttendanceSchema },
         ]),
     ],
     controllers: [ActivitiesController],
