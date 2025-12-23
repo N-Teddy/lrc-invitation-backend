@@ -32,23 +32,27 @@ export class UsersService {
                 : undefined,
         });
         const saved = await user.save();
-        return saved.toObject();
+        return this.normalizeUser(saved.toObject());
     }
 
     async findAll(): Promise<Record<string, any>[]> {
-        return this.userModel.find().lean().exec();
+        const users = await this.userModel.find().lean().exec();
+        return users.map((user) => this.normalizeUser(user));
     }
 
     async findById(id: string): Promise<Record<string, any> | null> {
-        return this.userModel.findById(id).lean().exec();
+        const user = await this.userModel.findById(id).lean().exec();
+        return user ? this.normalizeUser(user) : null;
     }
 
     async findByEmail(email: string): Promise<Record<string, any> | null> {
-        return this.userModel.findOne({ email: email.toLowerCase() }).lean().exec();
+        const user = await this.userModel.findOne({ email: email.toLowerCase() }).lean().exec();
+        return user ? this.normalizeUser(user) : null;
     }
 
     async findByMagicToken(token: string): Promise<Record<string, any> | null> {
-        return this.userModel.findOne({ magicToken: token }).lean().exec();
+        const user = await this.userModel.findOne({ magicToken: token }).lean().exec();
+        return user ? this.normalizeUser(user) : null;
     }
 
     async clearMagicToken(userId: string | Types.ObjectId) {
@@ -58,7 +62,8 @@ export class UsersService {
     }
 
     async findByGoogleId(googleId: string): Promise<Record<string, any> | null> {
-        return this.userModel.findOne({ googleId }).lean().exec();
+        const user = await this.userModel.findOne({ googleId }).lean().exec();
+        return user ? this.normalizeUser(user) : null;
     }
 
     async linkGoogle(userId: string | Types.ObjectId, googleId: string, googleEmail: string) {
@@ -103,7 +108,7 @@ export class UsersService {
         if (!user) {
             throw new NotFoundException('User not found');
         }
-        return user;
+        return this.normalizeUser(user);
     }
 
     async remove(id: string): Promise<void> {
@@ -111,5 +116,13 @@ export class UsersService {
         if (!res) {
             throw new NotFoundException('User not found');
         }
+    }
+
+    private normalizeUser(user: Record<string, any>): Record<string, any> {
+        if (!user) {
+            return user;
+        }
+        const id = user._id ? String(user._id) : undefined;
+        return { ...user, id };
     }
 }

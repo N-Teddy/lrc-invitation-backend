@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Transporter } from 'nodemailer';
-import { NotificationSender, SendOptions } from 'src/common/interfaces/notification-sender.interface';
+import {
+    NotificationSender,
+    SendOptions,
+} from '../common/interfaces/notification-sender.interface';
 
 @Injectable()
 export class EmailNotificationSender implements NotificationSender {
@@ -17,9 +20,9 @@ export class EmailNotificationSender implements NotificationSender {
                     auth:
                         process.env.MAIL_USER && process.env.MAIL_PASS
                             ? {
-                                user: process.env.MAIL_USER,
-                                pass: process.env.MAIL_PASS,
-                            }
+                                  user: process.env.MAIL_USER,
+                                  pass: process.env.MAIL_PASS,
+                              }
                             : undefined,
                 });
             })

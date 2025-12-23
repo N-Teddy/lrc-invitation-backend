@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { NotificationSender, SendOptions } from 'src/common/interfaces/notification-sender.interface';
+import {
+    NotificationSender,
+    SendOptions,
+} from '../common/interfaces/notification-sender.interface';
 
 @Injectable()
 export class WhatsAppNotificationSender implements NotificationSender {

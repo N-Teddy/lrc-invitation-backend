@@ -13,7 +13,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, StandardRespon
         return next.handle().pipe(
             map((data) => ({
                 success: true,
-                data,
+                data: this.attachId(data),
             })),
             catchError((error) =>
                 throwError(() => ({
@@ -22,5 +22,20 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, StandardRespon
                 })),
             ),
         );
+    }
+
+    private attachId(value: any): any {
+        if (Array.isArray(value)) {
+            return value.map((item) => this.attachId(item));
+        }
+        if (value && typeof value === 'object') {
+            if (value._id) {
+                const id = value.id ? value.id : String(value._id);
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { _id, ...rest } = value;
+                return { ...rest, id };
+            }
+        }
+        return value;
     }
 }
