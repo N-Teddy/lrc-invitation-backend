@@ -1,0 +1,156 @@
+import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { OAuth2Client } from 'google-auth-library';
+import { v4 as uuidv4 } from 'uuid';
+import { UsersService } from '../users/users.service';
+import { RegisterRequestDto } from './dto/auth.dto';
+import { MonitorLevel, UserRole } from '../common/enums/user.enum';
+import { NotificationService } from '../notifications/notifications.service';
+import { NotificationContextType } from '../common/enums/notification.enum';
+import { GoogleSignInDto } from './dto/google.dto';
+
+const ACCESS_TOKEN_EXPIRES_IN = '24h';
+const REFRESH_TOKEN_EXPIRES_IN = '7d';
+
+@Injectable()
+export class AuthService {
+    private googleClient = new OAuth2Client();
+
+    constructor(
+        private readonly usersService: UsersService,
+        private readonly jwtService: JwtService,
+        private readonly notificationService: NotificationService,
+    ) {}
+
+    async register(dto: RegisterRequestDto) {
+        if (dto.role === UserRole.Child) {
+            throw new BadRequestException('Children are created by staff.');
+        }
+        const isMonitorPending =
+            dto.role === UserRole.Monitor &&
+            (dto.monitorLevel === MonitorLevel.Aspiring ||
+                dto.monitorLevel === MonitorLevel.Official);
+
+        const magicToken = uuidv4();
+        const magicExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+
+        const user = await this.usersService.create({
+            fullName: dto.fullName,
+            role: dto.role,
+            monitorLevel: dto.monitorLevel,
+            email: dto.email,
+            whatsAppPhoneE164: dto.phoneE164,
+            lifecycleStatus: undefined,
+            preferredLanguage: undefined,
+            originTown: undefined,
+            whatsAppOptIn: true,
+            registrationPendingApproval: isMonitorPending,
+            magicToken,
+            magicExpiresAt,
+        });
+
+        const magicLinkUrl = this.buildMagicLink(magicToken);
+        await this.notificationService.send({
+            userId: String(user._id),
+            to: user.email ?? '',
+            subject: 'Your sign-in link',
+            message: `Hello ${user.fullName},\n\nUse this link to sign in: ${magicLinkUrl}\nThis link expires in 30 minutes.`,
+            contextType: NotificationContextType.Reminder,
+            contextId: String(user._id),
+        });
+
+        return { message: 'Magic link sent', userId: user._id };
+    }
+
+    async exchangeMagicLink(token: string) {
+        const user = await this.usersService.findByMagicToken(token);
+        if (!user || !user.magicExpiresAt || user.magicExpiresAt.getTime() < Date.now()) {
+            throw new UnauthorizedException('Magic link expired or invalid');
+        }
+        if (user.registrationPendingApproval) {
+            throw new UnauthorizedException('Awaiting approval');
+        }
+
+        const { accessToken, refreshToken } = await this.generateTokens(
+            String(user._id),
+            user.role,
+            user.monitorLevel,
+        );
+        await this.usersService.clearMagicToken(user._id);
+        return { accessToken, refreshToken };
+    }
+
+    async refresh(refreshToken: string) {
+        try {
+            const payload = await this.jwtService.verifyAsync(refreshToken, {
+                secret: process.env.JWT_REFRESH_SECRET,
+            });
+            return this.generateTokens(payload.sub, payload.role, payload.monitorLevel);
+        } catch {
+            throw new UnauthorizedException('Invalid refresh token');
+        }
+    }
+
+    async revoke(userId: string) {
+        // Placeholder: mark refresh tokens invalid for this userId if blacklist is added
+        void userId;
+        return { success: true };
+    }
+
+    async googleSignIn(dto: GoogleSignInDto) {
+        const ticket = await this.googleClient.verifyIdToken({
+            idToken: dto.idToken,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+        if (!payload?.sub || !payload.email) {
+            throw new UnauthorizedException('Invalid Google token');
+        }
+
+        let user = await this.usersService.findByGoogleId(payload.sub);
+        if (!user) {
+            user = await this.usersService.findByEmail(payload.email);
+        }
+
+        if (!user) {
+            user = await this.usersService.create({
+                fullName: payload.name ?? 'Google User',
+                role: UserRole.Monitor,
+                monitorLevel: MonitorLevel.Aspiring,
+                email: payload.email,
+                preferredLanguage: payload.locale,
+                registrationPendingApproval: true,
+                googleId: payload.sub,
+                googleEmail: payload.email,
+                googleLinkedAt: new Date(),
+                whatsAppOptIn: false,
+            });
+        } else {
+            await this.usersService.linkGoogle(user._id, payload.sub, payload.email);
+        }
+
+        if (user.registrationPendingApproval) {
+            throw new UnauthorizedException('Awaiting approval');
+        }
+
+        return this.generateTokens(user._id, user.role, user.monitorLevel);
+    }
+
+    private buildMagicLink(token: string): string {
+        const base = process.env.APP_BASE_URL ?? 'http://localhost:3000';
+        return `${base}/auth/magic?token=${token}`;
+    }
+
+    private async generateTokens(userId: string, role: UserRole, monitorLevel?: MonitorLevel) {
+        const payload = { sub: String(userId), role, monitorLevel };
+        const accessToken = await this.jwtService.signAsync(payload, {
+            secret: process.env.JWT_ACCESS_SECRET,
+            expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+        });
+        const refreshToken = await this.jwtService.signAsync(payload, {
+            secret: process.env.JWT_REFRESH_SECRET,
+            expiresIn: REFRESH_TOKEN_EXPIRES_IN,
+        });
+        return { accessToken, refreshToken };
+    }
+}

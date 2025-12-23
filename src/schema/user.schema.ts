@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument } from 'mongoose';
 import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { Town } from '../common/enums/activity.enum';
 
@@ -37,6 +37,9 @@ export class User {
     @Prop({ required: true, trim: true })
     fullName: string;
 
+    @Prop({ trim: true, lowercase: true, unique: true })
+    email?: string;
+
     @Prop({ type: String, enum: UserRole, required: true })
     role: UserRole;
 
@@ -58,6 +61,24 @@ export class User {
     @Prop({ type: ProfileImageRef })
     profileImage?: ProfileImageRef;
 
+    @Prop({ default: false })
+    registrationPendingApproval?: boolean;
+
+    @Prop()
+    magicToken?: string;
+
+    @Prop()
+    magicExpiresAt?: Date;
+
+    @Prop()
+    googleId?: string;
+
+    @Prop()
+    googleEmail?: string;
+
+    @Prop()
+    googleLinkedAt?: Date;
+
     @Prop({ type: String, enum: LifecycleStatus, default: LifecycleStatus.Active })
     lifecycleStatus: LifecycleStatus;
 
@@ -71,3 +92,5 @@ UserSchema.index({ originTown: 1 });
 UserSchema.index({ preferredLanguage: 1 });
 UserSchema.index({ lifecycleStatus: 1 });
 UserSchema.index({ 'whatsApp.phoneE164': 1 }, { unique: false });
+UserSchema.index({ email: 1 }, { unique: true, sparse: true });
+UserSchema.index({ googleId: 1 }, { unique: true, sparse: true });

@@ -17,6 +17,9 @@ export class UsersService {
             originTown: dto.originTown,
             preferredLanguage: dto.preferredLanguage,
             lifecycleStatus: dto.lifecycleStatus,
+            registrationPendingApproval: dto.registrationPendingApproval,
+            magicToken: dto.magicToken,
+            magicExpiresAt: dto.magicExpiresAt,
             whatsApp: dto.whatsAppPhoneE164
                 ? {
                       phoneE164: dto.whatsAppPhoneE164,
@@ -33,6 +36,36 @@ export class UsersService {
 
     async findById(id: string): Promise<User | null> {
         return this.userModel.findById(id).exec();
+    }
+
+    async findByEmail(email: string): Promise<User | null> {
+        return this.userModel.findOne({ email: email.toLowerCase() }).exec();
+    }
+
+    async findByMagicToken(token: string): Promise<User | null> {
+        return this.userModel.findOne({ magicToken: token }).exec();
+    }
+
+    async clearMagicToken(userId: string) {
+        await this.userModel
+            .findByIdAndUpdate(userId, { $unset: { magicToken: '', magicExpiresAt: '' } })
+            .exec();
+    }
+
+    async findByGoogleId(googleId: string): Promise<User | null> {
+        return this.userModel.findOne({ googleId }).exec();
+    }
+
+    async linkGoogle(userId: string, googleId: string, googleEmail: string) {
+        await this.userModel
+            .findByIdAndUpdate(userId, {
+                $set: {
+                    googleId,
+                    googleEmail,
+                    googleLinkedAt: new Date(),
+                },
+            })
+            .exec();
     }
 
     async findOneOrFail(id: string): Promise<User> {

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{subject}}</title>
+</head>
+<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+  <h2 style="margin-bottom: 8px;">{{headline}}</h2>
+  <p style="margin-top: 0;">{{message}}</p>
+  {{#if actionUrl}}
+    <p style="margin: 16px 0;">
+      <a href="{{actionUrl}}" style="background:#2563eb;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;">
+        {{actionLabel}}
+      </a>
+    </p>
+    <p>If the button does not work, copy and paste this URL into your browser:</p>
+    <p style="word-break: break-all;">{{actionUrl}}</p>
+  {{/if}}
+  <p style="margin-top:24px;">Thank you,<br/>LRC Jeunesse</p>
+</body>
+</html>

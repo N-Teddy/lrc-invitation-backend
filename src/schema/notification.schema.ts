@@ -19,7 +19,7 @@ class InteractiveOption {
 
 @Schema({ timestamps: true })
 export class Notification {
-    @Prop({ type: String, enum: Channel, default: Channel.WhatsApp })
+    @Prop({ type: String, enum: Channel, default: Channel.Email })
     channel: Channel;
 
     @Prop({ type: Types.ObjectId, ref: 'User', required: true })

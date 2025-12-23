@@ -33,6 +33,20 @@ export class CreateUserDto {
     preferredLanguage?: string;
 
     @ApiProperty({ required: false })
+    @IsBoolean()
+    @IsOptional()
+    registrationPendingApproval?: boolean;
+
+    @ApiProperty({ required: false })
+    @IsString()
+    @IsOptional()
+    magicToken?: string;
+
+    @ApiProperty({ required: false })
+    @IsOptional()
+    magicExpiresAt?: Date;
+
+    @ApiProperty({ required: false })
     @IsString()
     @IsOptional()
     whatsAppPhoneE164?: string;

@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
 import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator';
 import { UsersService } from '../../users/users.service';
 
@@ -7,6 +8,7 @@ import { UsersService } from '../../users/users.service';
 export class AuthGuard implements CanActivate {
     constructor(
         private readonly reflector: Reflector,
+        private readonly jwtService: JwtService,
         private readonly usersService: UsersService,
     ) {}
 
@@ -20,17 +22,24 @@ export class AuthGuard implements CanActivate {
         }
 
         const request = context.switchToHttp().getRequest();
-        const userId = request.headers['x-user-id'] as string | undefined;
-        if (!userId) {
-            throw new UnauthorizedException('Missing x-user-id header');
+        const authHeader = request.headers['authorization'] as string | undefined;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            throw new UnauthorizedException('Missing bearer token');
         }
+        const token = authHeader.substring(7);
 
-        const user = await this.usersService.findById(userId);
-        if (!user) {
-            throw new UnauthorizedException('User not found');
+        try {
+            const payload = await this.jwtService.verifyAsync(token, {
+                secret: process.env.JWT_ACCESS_SECRET,
+            });
+            const user = await this.usersService.findById(payload.sub as string);
+            if (!user) {
+                throw new UnauthorizedException('User not found');
+            }
+            request.user = user;
+            return true;
+        } catch {
+            throw new UnauthorizedException('Invalid or expired token');
         }
-
-        request.user = user;
-        return true;
     }
 }
