@@ -16,8 +16,8 @@ export class AttendanceController {
     @Roles([UserRole.Monitor])
     @Get()
     @ApiOkResponse({ type: AttendanceResponseDto })
-    get(@Param('activityId') activityId: string) {
-        return this.attendanceService.getByActivityId(activityId);
+    get(@Param('activityId') activityId: string, @CurrentUser() currentUser: any) {
+        return this.attendanceService.getByActivityId(activityId, currentUser);
     }
 
     @Roles([UserRole.Monitor])

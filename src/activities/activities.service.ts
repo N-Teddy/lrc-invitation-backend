@@ -27,6 +27,7 @@ import {
     isValidConferenceDuration,
     targetGroupsForTargetingCode,
 } from '../common/utils/activity-targeting.util';
+import { TownScopeService } from '../common/services/town-scope.service';
 
 @Injectable()
 export class ActivitiesService {
@@ -38,10 +39,11 @@ export class ActivitiesService {
         private readonly childProfileModel: Model<ChildProfileDocument>,
         @InjectModel(Attendance.name)
         private readonly attendanceModel: Model<AttendanceDocument>,
+        private readonly townScopeService: TownScopeService,
     ) {}
 
     async create(dto: CreateActivityDto, currentUser: Record<string, any>) {
-        this.assertCanCreate(dto, currentUser);
+        await this.assertCanCreate(dto, currentUser);
         const activityPayload = this.normalizeCreatePayload(dto, currentUser);
 
         const { invitedChildrenUserIds, invitedMonitorUserIds } =
@@ -55,29 +57,71 @@ export class ActivitiesService {
         return created.toObject();
     }
 
-    async findAll(filters: { town?: Town; type?: ActivityType; from?: string; to?: string }) {
-        const query: Record<string, any> = {};
-        if (filters.town) query.town = filters.town;
-        if (filters.type) query.type = filters.type;
+    async findAll(
+        filters: { town?: Town; type?: ActivityType; from?: string; to?: string },
+        currentUser?: Record<string, any>,
+    ) {
+        const baseQuery: Record<string, any> = {};
+        if (filters.town) baseQuery.town = filters.town;
+        if (filters.type) baseQuery.type = filters.type;
         if (filters.from || filters.to) {
-            query.startDate = {};
-            if (filters.from) query.startDate.$gte = new Date(filters.from);
-            if (filters.to) query.startDate.$lte = new Date(filters.to);
+            baseQuery.startDate = {};
+            if (filters.from) baseQuery.startDate.$gte = new Date(filters.from);
+            if (filters.to) baseQuery.startDate.$lte = new Date(filters.to);
         }
-        return this.activityModel.find(query).sort({ startDate: -1 }).lean().exec();
+
+        if (
+            filters.type === ActivityType.Conference &&
+            filters.town &&
+            filters.town !== Town.Yaounde
+        ) {
+            throw new BadRequestException('Conference town is always Yaoundé');
+        }
+
+        if (currentUser && currentUser.monitorLevel !== MonitorLevel.Super) {
+            const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+            if (!userTown) {
+                throw new ForbiddenException('Monitor town not set');
+            }
+
+            if (filters.type && filters.type === ActivityType.Conference) {
+                // Conferences are global.
+            } else if (filters.town && filters.town !== userTown) {
+                throw new ForbiddenException('Not allowed to view other towns');
+            }
+
+            const scopeQuery = {
+                $or: [
+                    { type: ActivityType.Conference },
+                    { town: userTown, type: { $ne: ActivityType.Conference } },
+                ],
+            };
+
+            return this.activityModel
+                .find({ $and: [baseQuery, scopeQuery] })
+                .sort({ startDate: -1 })
+                .lean()
+                .exec();
+        }
+
+        return this.activityModel.find(baseQuery).sort({ startDate: -1 }).lean().exec();
     }
 
-    async findOneOrFail(id: string) {
+    async findOneOrFail(id: string, currentUser?: Record<string, any>) {
         const activity = await this.activityModel.findById(id).lean().exec();
         if (!activity) throw new NotFoundException('Activity not found');
+        if (currentUser) {
+            await this.assertCanRead(activity, currentUser);
+        }
         return activity;
     }
 
     async update(id: string, dto: UpdateActivityDto, currentUser: Record<string, any>) {
         const existing = await this.findOneOrFail(id);
-        this.assertCanEdit(existing, currentUser);
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        await this.assertCanEdit(existing, currentUser, userTown);
 
-        const payload = this.normalizeUpdatePayload(existing, dto, currentUser);
+        const payload = this.normalizeUpdatePayload(existing, dto, currentUser, userTown);
         const updated = await this.activityModel
             .findByIdAndUpdate(id, { $set: payload }, { new: true })
             .lean()
@@ -88,14 +132,16 @@ export class ActivitiesService {
 
     async remove(id: string, currentUser: Record<string, any>) {
         const existing = await this.findOneOrFail(id);
-        this.assertCanEdit(existing, currentUser);
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        await this.assertCanEdit(existing, currentUser, userTown);
         await this.activityModel.findByIdAndDelete(id).exec();
         return { deleted: true };
     }
 
     async regenerateInvitations(id: string, currentUser: Record<string, any>) {
         const activity = await this.findOneOrFail(id);
-        this.assertCanRegenerateInvitations(activity, currentUser);
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        await this.assertCanRegenerateInvitations(activity, currentUser, userTown);
 
         const { invitedChildrenUserIds, invitedMonitorUserIds } =
             await this.computeInvitations(activity);
@@ -140,8 +186,8 @@ export class ActivitiesService {
         return updated;
     }
 
-    async getConferenceEligibility(activityId: string) {
-        const activity = await this.findOneOrFail(activityId);
+    async getConferenceEligibility(activityId: string, currentUser: Record<string, any>) {
+        const activity = await this.findOneOrFail(activityId, currentUser);
         if (activity.type !== ActivityType.Conference) {
             throw new BadRequestException('Eligibility highlight is only for conferences');
         }
@@ -337,6 +383,7 @@ export class ActivitiesService {
         existing: Record<string, any>,
         dto: UpdateActivityDto,
         currentUser: Record<string, any>,
+        userTown?: Town,
     ) {
         const merged: any = {
             ...existing,
@@ -363,11 +410,18 @@ export class ActivitiesService {
             throw new BadRequestException('startDate must be before endDate');
         }
 
+        // Prevent non-super monitors from converting an activity into a conference.
+        if (
+            merged.type === ActivityType.Conference &&
+            currentUser?.monitorLevel !== MonitorLevel.Super
+        ) {
+            throw new ForbiddenException('Only Super Monitors can manage conferences');
+        }
+
         // Town edits: only relevant for non-conference activities.
         if (existing.type !== ActivityType.Conference && dto.town) {
             // Enforce town-scope for non-super monitors.
             if (currentUser?.monitorLevel !== MonitorLevel.Super) {
-                const userTown = currentUser?.originTown;
                 if (!userTown || dto.town !== userTown) {
                     throw new ForbiddenException('Cannot change town outside your scope');
                 }
@@ -386,7 +440,7 @@ export class ActivitiesService {
         return payload;
     }
 
-    private assertCanCreate(dto: CreateActivityDto, currentUser: Record<string, any>) {
+    private async assertCanCreate(dto: CreateActivityDto, currentUser: Record<string, any>) {
         if (currentUser?.role !== UserRole.Monitor) {
             throw new ForbiddenException('Only monitors can create activities');
         }
@@ -400,7 +454,7 @@ export class ActivitiesService {
             throw new ForbiddenException('Only Super Monitors can create conferences');
         }
         if (currentUser?.monitorLevel !== MonitorLevel.Super) {
-            const userTown = currentUser?.originTown;
+            const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
             if (!userTown) throw new ForbiddenException('Monitor town not set');
             if (dto.type !== ActivityType.Conference && dto.town !== userTown) {
                 throw new ForbiddenException('Monitors can only create activities for their town');
@@ -408,7 +462,11 @@ export class ActivitiesService {
         }
     }
 
-    private assertCanEdit(activity: Record<string, any>, currentUser: Record<string, any>) {
+    private async assertCanEdit(
+        activity: Record<string, any>,
+        currentUser: Record<string, any>,
+        userTown?: Town,
+    ) {
         if (currentUser?.role !== UserRole.Monitor) {
             throw new ForbiddenException('Only monitors can manage activities');
         }
@@ -422,17 +480,33 @@ export class ActivitiesService {
             throw new ForbiddenException('Only Super Monitors can manage conferences');
         }
         if (currentUser?.monitorLevel !== MonitorLevel.Super) {
-            const userTown = currentUser?.originTown;
-            if (!userTown) throw new ForbiddenException('Monitor town not set');
-            if (activity.town !== userTown) {
+            const resolvedTown =
+                userTown ?? (await this.townScopeService.resolveMonitorTown(currentUser));
+            if (!resolvedTown) throw new ForbiddenException('Monitor town not set');
+            if (activity.town !== resolvedTown) {
                 throw new ForbiddenException('Monitors can only manage activities for their town');
             }
         }
     }
 
-    private assertCanRegenerateInvitations(
+    private async assertCanRead(activity: Record<string, any>, currentUser: Record<string, any>) {
+        if (currentUser?.role !== UserRole.Monitor) {
+            throw new ForbiddenException('Only monitors can view activities');
+        }
+        if (currentUser?.monitorLevel === MonitorLevel.Super) return;
+        if (activity.type === ActivityType.Conference) return;
+
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        if (!userTown) throw new ForbiddenException('Monitor town not set');
+        if (activity.town !== userTown) {
+            throw new ForbiddenException('Not allowed to view other towns');
+        }
+    }
+
+    private async assertCanRegenerateInvitations(
         activity: Record<string, any>,
         currentUser: Record<string, any>,
+        userTown?: Town,
     ) {
         // Super can always regenerate; monitors can for their town activities (not conferences).
         if (currentUser?.monitorLevel === MonitorLevel.Super) return;
@@ -441,7 +515,7 @@ export class ActivitiesService {
                 'Only Super Monitors can regenerate conference invitations',
             );
         }
-        this.assertCanEdit(activity, currentUser);
+        await this.assertCanEdit(activity, currentUser, userTown);
     }
 
     private assertCanOverrideInvitations(
@@ -452,6 +526,11 @@ export class ActivitiesService {
             throw new ForbiddenException('Only Super Monitors can override invitations');
         }
     }
+
+    /*
+     * NOTE: legacy methods (sync variants) removed below; RBAC checks are now async
+     * because monitor town scope can come from the monitor profile collection.
+     */
 
     private async getAgeToGroupMapping(): Promise<{ bands: AgeBand[] }> {
         const existing = await this.settingsModel

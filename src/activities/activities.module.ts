@@ -7,6 +7,8 @@ import { Settings, SettingsSchema } from '../schema/settings.schema';
 import { User, UserSchema } from '../schema/user.schema';
 import { ChildProfile, ChildProfileSchema } from '../schema/child-profile.schema';
 import { Attendance, AttendanceSchema } from '../schema/attendance.schema';
+import { MonitorProfile, MonitorProfileSchema } from '../schema/monitor-profile.schema';
+import { TownScopeService } from '../common/services/town-scope.service';
 
 @Module({
     imports: [
@@ -16,10 +18,11 @@ import { Attendance, AttendanceSchema } from '../schema/attendance.schema';
             { name: User.name, schema: UserSchema },
             { name: ChildProfile.name, schema: ChildProfileSchema },
             { name: Attendance.name, schema: AttendanceSchema },
+            { name: MonitorProfile.name, schema: MonitorProfileSchema },
         ]),
     ],
     controllers: [ActivitiesController],
-    providers: [ActivitiesService],
+    providers: [ActivitiesService, TownScopeService],
     exports: [ActivitiesService],
 })
 export class ActivitiesModule {}

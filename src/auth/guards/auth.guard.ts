@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator';
 import { UsersService } from '../../users/users.service';
 import { AppConfigService } from '../../config/app-config.service';
+import { UserRole } from '../../common/enums/user.enum';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -37,6 +38,9 @@ export class AuthGuard implements CanActivate {
             const user = await this.usersService.findById(payload.sub as string);
             if (!user) {
                 throw new UnauthorizedException('User not found');
+            }
+            if (user.role === UserRole.Child) {
+                throw new UnauthorizedException('Children cannot access the API');
             }
             request.user = user;
             return true;

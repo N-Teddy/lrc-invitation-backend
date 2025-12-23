@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Activity, ActivityDocument } from '../schema/activity.schema';
@@ -8,13 +13,14 @@ import { ChildProfile, ChildProfileDocument } from '../schema/child-profile.sche
 import { Settings, SettingsDocument } from '../schema/settings.schema';
 import { UpsertAttendanceDto } from '../dtos/request/attendance.dto';
 import { AttendanceRoleAtTime } from '../common/enums/attendance.enum';
-import { ChildGroup, TargetingCode } from '../common/enums/activity.enum';
-import { UserRole, LifecycleStatus } from '../common/enums/user.enum';
+import { ActivityType, ChildGroup, TargetingCode, Town } from '../common/enums/activity.enum';
+import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { DEFAULT_AGE_TO_GROUP_MAPPING, AgeBand } from '../common/constants/groups.constants';
 import { computeAgeYears } from '../common/utils/groups.util';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
 import { isEligibleChildForActivity } from '../common/utils/attendance-eligibility.util';
 import { ReportingService } from '../reporting/reporting.service';
+import { TownScopeService } from '../common/services/town-scope.service';
 
 @Injectable()
 export class AttendanceService {
@@ -28,10 +34,14 @@ export class AttendanceService {
         private readonly childProfileModel: Model<ChildProfileDocument>,
         @InjectModel(Settings.name) private readonly settingsModel: Model<SettingsDocument>,
         private readonly reportingService: ReportingService,
+        private readonly townScopeService: TownScopeService,
     ) {}
 
-    async getByActivityId(activityId: string) {
-        await this.assertActivityExists(activityId);
+    async getByActivityId(activityId: string, currentUser: Record<string, any>) {
+        const activity = await this.activityModel.findById(activityId).lean().exec();
+        if (!activity) throw new NotFoundException('Activity not found');
+        await this.assertCanAccessAttendance(activity, currentUser);
+
         const doc = await this.attendanceModel
             .findOne({ activityId: new Types.ObjectId(activityId) })
             .lean()
@@ -46,6 +56,7 @@ export class AttendanceService {
     ) {
         const activity = await this.activityModel.findById(activityId).lean().exec();
         if (!activity) throw new NotFoundException('Activity not found');
+        await this.assertCanAccessAttendance(activity, currentUser);
 
         const uniqueEntries = new Map<string, { present: boolean; classificationLabel?: any }>();
         for (const entry of dto.entries ?? []) {
@@ -181,9 +192,23 @@ export class AttendanceService {
         return updated;
     }
 
-    private async assertActivityExists(activityId: string) {
-        const exists = await this.activityModel.exists({ _id: new Types.ObjectId(activityId) });
-        if (!exists) throw new NotFoundException('Activity not found');
+    private async assertCanAccessAttendance(
+        activity: Record<string, any>,
+        currentUser: Record<string, any>,
+    ) {
+        if (currentUser?.role !== UserRole.Monitor) {
+            throw new ForbiddenException('Only monitors can access attendance');
+        }
+        if (currentUser?.monitorLevel === MonitorLevel.Super) return;
+        if (activity.type === ActivityType.Conference) return;
+
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        if (!userTown) throw new ForbiddenException('Monitor town not set');
+        if ((activity.town as Town | undefined) !== userTown) {
+            throw new ForbiddenException(
+                'Monitors can only take attendance for their town activities',
+            );
+        }
     }
 
     private async getAgeToGroupMapping(): Promise<{ bands: AgeBand[] }> {

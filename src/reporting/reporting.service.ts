@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Activity, ActivityDocument } from '../schema/activity.schema';
@@ -9,6 +9,7 @@ import { AttendanceRoleAtTime } from '../common/enums/attendance.enum';
 import { MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { NotificationService } from '../notifications/notifications.service';
 import { NotificationContextType } from '../common/enums/notification.enum';
+import { TownScopeService } from '../common/services/town-scope.service';
 
 type Totals = { present: number; absent: number; total: number };
 
@@ -31,7 +32,15 @@ export class ReportingService {
         private readonly attendanceModel: Model<AttendanceDocument>,
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
         private readonly notificationService: NotificationService,
+        private readonly townScopeService: TownScopeService,
     ) {}
+
+    async getActivityAttendanceStatsForUser(activityId: string, currentUser: Record<string, any>) {
+        const activity = await this.activityModel.findById(activityId).lean().exec();
+        if (!activity) throw new NotFoundException('Activity not found');
+        await this.assertCanReadActivityReports(activity, currentUser);
+        return this.getActivityAttendanceStats(activityId);
+    }
 
     async getActivityAttendanceStats(activityId: string, scope?: { originTown?: Town }) {
         const activity = await this.activityModel.findById(activityId).lean().exec();
@@ -133,6 +142,166 @@ export class ReportingService {
             },
             byOriginTown: normalizeCounts(
                 (out.byOriginTown ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),
+            ),
+            byClassificationLabel: normalizeCounts(
+                (out.byClassification ?? []).map((x: any) => ({
+                    key: String(x._id),
+                    count: x.count,
+                })),
+            ),
+            byChildGroup: normalizeCounts(
+                (out.byChildGroup ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),
+            ),
+        };
+    }
+
+    async getYearlyAttendanceSummaryForUser(year: number, currentUser: Record<string, any>) {
+        if (currentUser?.role !== UserRole.Monitor) {
+            throw new ForbiddenException('Only monitors can view reports');
+        }
+        if (currentUser?.monitorLevel === MonitorLevel.Super) {
+            return this.getYearlyAttendanceSummary(year);
+        }
+
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        if (!userTown) throw new ForbiddenException('Monitor town not set');
+
+        const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0));
+        const end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0));
+
+        const activities = await this.activityModel
+            .find({
+                startDate: { $gte: start, $lt: end },
+                $or: [
+                    { type: ActivityType.Conference },
+                    { town: userTown, type: { $ne: ActivityType.Conference } },
+                ],
+            })
+            .select({ _id: 1, type: 1, town: 1 })
+            .lean()
+            .exec();
+
+        const activityIds = activities.map((a) => a._id);
+        const activityById = new Map<string, { type: ActivityType; town: Town }>();
+        for (const a of activities) {
+            activityById.set(String(a._id), {
+                type: a.type as ActivityType,
+                town: a.town as Town,
+            });
+        }
+
+        if (!activityIds.length) {
+            return {
+                year,
+                totalsByRole: {
+                    children: toTotals(0, 0),
+                    monitors: toTotals(0, 0),
+                },
+                byTown: [],
+                byActivityType: [],
+                byClassificationLabel: [],
+                byChildGroup: [],
+            };
+        }
+
+        const pipeline: any[] = [
+            { $match: { activityId: { $in: activityIds } } },
+            { $unwind: '$entries' },
+            {
+                $project: {
+                    activityId: '$activityId',
+                    present: '$entries.present',
+                    roleAtTime: '$entries.roleAtTime',
+                    originTownAtTime: '$entries.originTownAtTime',
+                    groupAtTime: '$entries.groupAtTime',
+                    classificationLabel: '$entries.classificationLabel',
+                },
+            },
+            {
+                $addFields: {
+                    activityIdStr: { $toString: '$activityId' },
+                },
+            },
+            {
+                $facet: {
+                    totals: [
+                        {
+                            $group: {
+                                _id: '$roleAtTime',
+                                total: { $sum: 1 },
+                                present: {
+                                    $sum: {
+                                        $cond: [{ $eq: ['$present', true] }, 1, 0],
+                                    },
+                                },
+                            },
+                        },
+                    ],
+                    byTown: [
+                        {
+                            $group: {
+                                _id: { $ifNull: ['$originTownAtTime', 'unknown'] },
+                                count: { $sum: 1 },
+                            },
+                        },
+                    ],
+                    byClassification: [
+                        {
+                            $group: {
+                                _id: { $ifNull: ['$classificationLabel', 'unclassified'] },
+                                count: { $sum: 1 },
+                            },
+                        },
+                    ],
+                    byChildGroup: [
+                        { $match: { roleAtTime: AttendanceRoleAtTime.Child } },
+                        {
+                            $group: {
+                                _id: { $ifNull: ['$groupAtTime', 'unknown'] },
+                                count: { $sum: 1 },
+                            },
+                        },
+                    ],
+                    byActivityType: [
+                        {
+                            $group: {
+                                _id: '$activityIdStr',
+                                count: { $sum: 1 },
+                            },
+                        },
+                    ],
+                },
+            },
+        ];
+
+        const agg = await this.attendanceModel.aggregate(pipeline).exec();
+        const out = agg?.[0] ?? {};
+
+        const totalsRows: Array<{ _id: string; total: number; present: number }> = out.totals ?? [];
+        const childrenRow = totalsRows.find((r) => r._id === AttendanceRoleAtTime.Child);
+        const monitorRow = totalsRows.find((r) => r._id === AttendanceRoleAtTime.Monitor);
+
+        const byActivityTypeCounts = new Map<ActivityType, number>();
+        for (const row of out.byActivityType ?? []) {
+            const meta = activityById.get(String(row._id));
+            if (!meta) continue;
+            byActivityTypeCounts.set(
+                meta.type,
+                (byActivityTypeCounts.get(meta.type) ?? 0) + row.count,
+            );
+        }
+
+        return {
+            year,
+            totalsByRole: {
+                children: toTotals(childrenRow?.present ?? 0, childrenRow?.total ?? 0),
+                monitors: toTotals(monitorRow?.present ?? 0, monitorRow?.total ?? 0),
+            },
+            byTown: normalizeCounts(
+                (out.byTown ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),
+            ),
+            byActivityType: normalizeCounts(
+                [...byActivityTypeCounts.entries()].map(([key, count]) => ({ key, count })),
             ),
             byClassificationLabel: normalizeCounts(
                 (out.byClassification ?? []).map((x: any) => ({
@@ -374,6 +543,23 @@ export class ReportingService {
                 contextType: NotificationContextType.AttendanceReport,
                 contextId: String(activityId),
             });
+        }
+    }
+
+    private async assertCanReadActivityReports(
+        activity: Record<string, any>,
+        currentUser: Record<string, any>,
+    ) {
+        if (currentUser?.role !== UserRole.Monitor) {
+            throw new ForbiddenException('Only monitors can view reports');
+        }
+        if (currentUser?.monitorLevel === MonitorLevel.Super) return;
+        if (activity.type === ActivityType.Conference) return;
+
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        if (!userTown) throw new ForbiddenException('Monitor town not set');
+        if ((activity.town as Town | undefined) !== userTown) {
+            throw new ForbiddenException('Not allowed to view other towns');
         }
     }
 }

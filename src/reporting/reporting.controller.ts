@@ -24,9 +24,7 @@ export class ReportingController {
         @Param('activityId') activityId: string,
         @CurrentUser() currentUser: any,
     ) {
-        const isSuper = currentUser?.monitorLevel === MonitorLevel.Super;
-        const originTown = !isSuper ? (currentUser?.originTown as Town | undefined) : undefined;
-        return this.reportingService.getActivityAttendanceStats(activityId, { originTown });
+        return this.reportingService.getActivityAttendanceStatsForUser(activityId, currentUser);
     }
 
     @Roles([UserRole.Monitor])
@@ -40,13 +38,11 @@ export class ReportingController {
         const year = Number(yearStr);
         const isSuper = currentUser?.monitorLevel === MonitorLevel.Super;
 
-        // For non-super: scope to their own originTown for origin-based reporting.
-        const originTown = !isSuper ? (currentUser?.originTown as Town | undefined) : undefined;
+        if (!isSuper) {
+            return this.reportingService.getYearlyAttendanceSummaryForUser(year, currentUser);
+        }
 
-        // For non-super: also scope activity calendars to their town.
-        const activityTown = !isSuper ? (currentUser?.originTown as Town | undefined) : town;
-
-        return this.reportingService.getYearlyAttendanceSummary(year, { activityTown, originTown });
+        return this.reportingService.getYearlyAttendanceSummary(year, { activityTown: town });
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Super])

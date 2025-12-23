@@ -34,22 +34,23 @@ export class ActivitiesController {
         @Query('type') type?: ActivityType,
         @Query('from') from?: string,
         @Query('to') to?: string,
+        @CurrentUser() currentUser?: any,
     ) {
-        return this.activitiesService.findAll({ town, type, from, to });
+        return this.activitiesService.findAll({ town, type, from, to }, currentUser);
     }
 
     @Roles([UserRole.Monitor])
     @Get(':id')
     @ApiOkResponse({ type: ActivityResponseDto })
-    findOne(@Param('id') id: string) {
-        return this.activitiesService.findOneOrFail(id);
+    findOne(@Param('id') id: string, @CurrentUser() currentUser: any) {
+        return this.activitiesService.findOneOrFail(id, currentUser);
     }
 
     @Roles([UserRole.Monitor])
     @Get(':id/conference-eligibility')
     @ApiOkResponse({ type: ConferenceEligibilityResponseDto })
-    conferenceEligibility(@Param('id') id: string) {
-        return this.activitiesService.getConferenceEligibility(id);
+    conferenceEligibility(@Param('id') id: string, @CurrentUser() currentUser: any) {
+        return this.activitiesService.getConferenceEligibility(id, currentUser);
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])
