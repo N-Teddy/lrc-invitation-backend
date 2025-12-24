@@ -5,7 +5,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { TownScopeService } from '../common/services/town-scope.service';
 import { MediaService } from '../media/media.service';
 import { SettingsService } from '../settings/settings.service';
@@ -14,13 +14,26 @@ import { AppConfigService } from '../config/app-config.service';
 import { User, UserDocument } from '../schema/user.schema';
 import { ChildProfile, ChildProfileDocument } from '../schema/child-profile.schema';
 import { CreateChildDto } from '../dtos/request/child.dto';
-import { ChildGroup, Town } from '../common/enums/activity.enum';
+import { ActivityType, ChildGroup, Town } from '../common/enums/activity.enum';
 import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
 import { computeAgeYears } from '../common/utils/groups.util';
 import { NotificationContextType } from '../common/enums/notification.enum';
 import { UsersService } from '../users/users.service';
 import { UploadedFile } from '../common/interfaces/uploaded-file.interface';
+import { Attendance, AttendanceDocument } from '../schema/attendance.schema';
+import { Activity, ActivityDocument } from '../schema/activity.schema';
+import { AttendanceRoleAtTime } from '../common/enums/attendance.enum';
+
+type GuardianInput = { fullName: string; phoneE164: string; relationship: string; email?: string };
+type CreateChildMultipartInput = {
+    fullName: string;
+    dateOfBirth: string;
+    guardiansJson: string;
+    preferredLanguage?: string;
+    whatsAppPhoneE164?: string;
+    whatsAppOptIn?: boolean;
+};
 
 @Injectable()
 export class ChildrenService {
@@ -28,6 +41,10 @@ export class ChildrenService {
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
         @InjectModel(ChildProfile.name)
         private readonly childProfileModel: Model<ChildProfileDocument>,
+        @InjectModel(Attendance.name)
+        private readonly attendanceModel: Model<AttendanceDocument>,
+        @InjectModel(Activity.name)
+        private readonly activityModel: Model<ActivityDocument>,
         private readonly townScopeService: TownScopeService,
         private readonly settingsService: SettingsService,
         private readonly mediaService: MediaService,
@@ -37,14 +54,28 @@ export class ChildrenService {
     ) {}
 
     async list(
-        filters: { q?: string; includeArchived?: boolean },
+        filters: { q?: string; includeArchived?: boolean; page?: number; limit?: number },
         currentUser: Record<string, any>,
-    ) {
+    ): Promise<{
+        items: any[];
+        page: number;
+        limit: number;
+        total: number;
+        missingProfileImageCount: number;
+    }> {
         const scopeTown = await this.resolveMonitorTownOrFail(currentUser);
         const isSuper = currentUser?.monitorLevel === MonitorLevel.Super;
 
         const q = (filters.q ?? '').trim();
         const includeArchived = !!filters.includeArchived && isSuper;
+
+        const limit = Number.isFinite(filters.limit)
+            ? Math.max(1, Math.min(50, Math.floor(filters.limit as number)))
+            : 20;
+        const page = Number.isFinite(filters.page)
+            ? Math.max(1, Math.floor(filters.page as number))
+            : 1;
+        const skip = (page - 1) * limit;
 
         const query: Record<string, any> = { role: UserRole.Child };
         if (!includeArchived) query.lifecycleStatus = LifecycleStatus.Active;
@@ -56,24 +87,50 @@ export class ChildrenService {
             };
         }
 
-        const users = await this.userModel.find(query).sort({ fullName: 1 }).lean().exec();
-        if (!users.length) return [];
+        const [total, missingProfileImageCount, users] = await Promise.all([
+            this.userModel.countDocuments(query).exec(),
+            this.userModel
+                .countDocuments({
+                    ...query,
+                    $or: [
+                        { profileImage: { $exists: false } },
+                        { 'profileImage.url': { $exists: false } },
+                        { 'profileImage.url': null },
+                        { 'profileImage.url': '' },
+                    ],
+                })
+                .exec(),
+            this.userModel.find(query).sort({ fullName: 1 }).skip(skip).limit(limit).lean().exec(),
+        ]);
+
+        if (!users.length) {
+            return { items: [], page, limit, total, missingProfileImageCount };
+        }
 
         const ids = users.map((u) => u._id);
         const profiles = await this.childProfileModel
             .find({ userId: { $in: ids } })
-            .select({ userId: 1, currentGroup: 1 })
+            .select({ userId: 1, currentGroup: 1, guardians: 1 })
             .lean()
             .exec();
         const groupById = new Map<string, ChildGroup | undefined>();
+        const guardiansById = new Map<string, GuardianInput[]>();
         for (const p of profiles) {
             groupById.set(String(p.userId), p.currentGroup as ChildGroup | undefined);
+            guardiansById.set(String(p.userId), (p as any).guardians ?? []);
         }
 
-        return users.map((u) => ({
-            ...u,
-            group: groupById.get(String(u._id)),
-        }));
+        return {
+            items: users.map((u) => ({
+                ...u,
+                group: groupById.get(String(u._id)),
+                guardians: guardiansById.get(String(u._id)) ?? [],
+            })),
+            page,
+            limit,
+            total,
+            missingProfileImageCount,
+        };
     }
 
     async get(id: string, currentUser: Record<string, any>) {
@@ -91,11 +148,12 @@ export class ChildrenService {
         return {
             ...user,
             group: profile?.currentGroup as ChildGroup | undefined,
+            guardians: (profile as any)?.guardians ?? [],
         };
     }
 
     async create(
-        dto: CreateChildDto,
+        dto: CreateChildMultipartInput,
         file: UploadedFile | undefined,
         currentUser: Record<string, any>,
     ) {
@@ -114,6 +172,8 @@ export class ChildrenService {
         if (ageYears >= 19) {
             throw new BadRequestException('Adults are out of scope (child must be 18 or younger)');
         }
+
+        const guardians = this.parseGuardians(dto.guardiansJson);
 
         const profileImage = file ? await this.mediaService.uploadProfileImage(file) : undefined;
 
@@ -139,7 +199,7 @@ export class ChildrenService {
         const group = computeGroupFromAge(ageYears, mapping.bands);
         await this.childProfileModel.findOneAndUpdate(
             { userId: user._id },
-            { $set: { currentGroup: group, groupComputedAt: new Date() } },
+            { $set: { currentGroup: group, groupComputedAt: new Date(), guardians } },
             { upsert: true },
         );
 
@@ -150,7 +210,7 @@ export class ChildrenService {
             group,
         });
 
-        return { ...user.toObject(), group };
+        return { ...user.toObject(), group, guardians };
     }
 
     async bulkCreate(children: CreateChildDto[], currentUser: Record<string, any>) {
@@ -200,11 +260,17 @@ export class ChildrenService {
                 const group = computeGroupFromAge(ageYears, mapping.bands);
                 await this.childProfileModel.findOneAndUpdate(
                     { userId: user._id },
-                    { $set: { currentGroup: group, groupComputedAt: now } },
+                    {
+                        $set: {
+                            currentGroup: group,
+                            groupComputedAt: now,
+                            guardians: (item.guardians ?? []) as any,
+                        },
+                    },
                     { upsert: true },
                 );
 
-                created.push({ ...user.toObject(), group });
+                created.push({ ...user.toObject(), group, guardians: item.guardians });
             } catch (err) {
                 const message = err?.message ?? 'Invalid child record';
                 errors.push({ index: i, message });
@@ -241,7 +307,11 @@ export class ChildrenService {
         if (!updated) throw new NotFoundException('Child not found');
 
         const profile = await this.childProfileModel.findOne({ userId: updated._id }).lean().exec();
-        return { ...updated, group: profile?.currentGroup as ChildGroup | undefined };
+        return {
+            ...updated,
+            group: profile?.currentGroup as ChildGroup | undefined,
+            guardians: (profile as any)?.guardians ?? [],
+        };
     }
 
     async archive(childId: string, currentUser: Record<string, any>) {
@@ -266,7 +336,110 @@ export class ChildrenService {
         if (!updated) throw new NotFoundException('Child not found');
 
         const profile = await this.childProfileModel.findOne({ userId: updated._id }).lean().exec();
-        return { ...updated, group: profile?.currentGroup as ChildGroup | undefined };
+        return {
+            ...updated,
+            group: profile?.currentGroup as ChildGroup | undefined,
+            guardians: (profile as any)?.guardians ?? [],
+        };
+    }
+
+    async getStats(childId: string, currentUser: Record<string, any>) {
+        await this.get(childId, currentUser);
+
+        const childObjId = new Types.ObjectId(childId);
+        const rows = await this.attendanceModel
+            .aggregate([
+                {
+                    $match: {
+                        entries: {
+                            $elemMatch: {
+                                userId: childObjId,
+                                roleAtTime: AttendanceRoleAtTime.Child,
+                            },
+                        },
+                    },
+                },
+                { $unwind: '$entries' },
+                {
+                    $match: {
+                        'entries.userId': childObjId,
+                        'entries.roleAtTime': AttendanceRoleAtTime.Child,
+                    },
+                },
+                {
+                    $lookup: {
+                        from: this.activityModel.collection.name,
+                        localField: 'activityId',
+                        foreignField: '_id',
+                        as: 'activity',
+                    },
+                },
+                { $unwind: '$activity' },
+                {
+                    $project: {
+                        present: '$entries.present',
+                        activityType: '$activity.type',
+                        startDate: '$activity.startDate',
+                    },
+                },
+                {
+                    $group: {
+                        _id: '$activityType',
+                        totalRecords: { $sum: 1 },
+                        presentCount: {
+                            $sum: {
+                                $cond: [{ $eq: ['$present', true] }, 1, 0],
+                            },
+                        },
+                        absentCount: {
+                            $sum: {
+                                $cond: [{ $eq: ['$present', false] }, 1, 0],
+                            },
+                        },
+                        lastAttendanceAt: { $max: '$startDate' },
+                        lastPresentAt: {
+                            $max: {
+                                $cond: [{ $eq: ['$present', true] }, '$startDate', null],
+                            },
+                        },
+                    },
+                },
+            ])
+            .exec();
+
+        const byType = rows.map((r) => ({
+            activityType: r._id as ActivityType,
+            totalRecords: r.totalRecords as number,
+            presentCount: r.presentCount as number,
+            absentCount: r.absentCount as number,
+            lastPresentAt: r.lastPresentAt ? new Date(r.lastPresentAt) : undefined,
+        }));
+
+        const totalAttendanceRecords = byType.reduce((sum, r) => sum + r.totalRecords, 0);
+        const presentCount = byType.reduce((sum, r) => sum + r.presentCount, 0);
+        const absentCount = byType.reduce((sum, r) => sum + r.absentCount, 0);
+        const lastAttendanceAtMs = rows.length
+            ? Math.max(...rows.map((r) => new Date(r.lastAttendanceAt as Date).getTime()))
+            : undefined;
+        const lastAttendanceAt =
+            typeof lastAttendanceAtMs === 'number' ? new Date(lastAttendanceAtMs) : undefined;
+
+        const presentMs = rows
+            .map((r) => (r.lastPresentAt ? new Date(r.lastPresentAt as Date).getTime() : undefined))
+            .filter((x): x is number => typeof x === 'number' && x > 0);
+        const lastPresentAtMs = presentMs.length ? Math.max(...presentMs) : undefined;
+        const lastPresentAt =
+            typeof lastPresentAtMs === 'number' ? new Date(lastPresentAtMs) : undefined;
+
+        return {
+            childId,
+            totalAttendanceRecords,
+            presentCount,
+            absentCount,
+            lastAttendanceAt,
+            lastPresentAt: presentCount ? lastPresentAt : undefined,
+            byActivityType: byType,
+        };
     }
 
     private assertCanCreate(currentUser: Record<string, any>) {
@@ -305,9 +478,7 @@ export class ChildrenService {
         group?: ChildGroup;
     }) {
         const recipients = await this.usersService.findSuperMonitorsByTownForApproval(params.town);
-        const fallback = recipients.length
-            ? recipients
-            : await this.usersService.findAllSuperMonitors();
+        if (!recipients.length) return;
 
         const appUrl = `${this.config.frontendBaseUrl}/children/${params.childId}`;
         const subject = `New child created — ${params.town}`;
@@ -318,7 +489,7 @@ export class ChildrenService {
             `Group: ${params.group ?? 'Unknown'}\n\n` +
             `Open: ${appUrl}`;
 
-        for (const r of fallback) {
+        for (const r of recipients) {
             const to = r.email;
             if (!to) continue;
             await this.notificationService.send({
@@ -347,9 +518,7 @@ export class ChildrenService {
         sampleNames: string[];
     }) {
         const recipients = await this.usersService.findSuperMonitorsByTownForApproval(params.town);
-        const fallback = recipients.length
-            ? recipients
-            : await this.usersService.findAllSuperMonitors();
+        if (!recipients.length) return;
 
         const listUrl = `${this.config.frontendBaseUrl}/children`;
         const subject = `Children created (bulk) — ${params.town}`;
@@ -364,7 +533,7 @@ export class ChildrenService {
             sample +
             `\n\nOpen list: ${listUrl}`;
 
-        for (const r of fallback) {
+        for (const r of recipients) {
             const to = r.email;
             if (!to) continue;
             await this.notificationService.send({
@@ -385,5 +554,45 @@ export class ChildrenService {
                 contextId: `children_bulk_created:${params.town}:${Date.now()}`,
             });
         }
+    }
+
+    private parseGuardians(raw: string): GuardianInput[] {
+        const trimmed = (raw ?? '').trim();
+        if (!trimmed) {
+            throw new BadRequestException('guardiansJson is required');
+        }
+
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(trimmed) as unknown;
+        } catch {
+            throw new BadRequestException('guardiansJson must be valid JSON');
+        }
+
+        if (!Array.isArray(parsed) || parsed.length < 1) {
+            throw new BadRequestException('At least one parent/guardian is required');
+        }
+
+        const guardians: GuardianInput[] = [];
+        for (const item of parsed) {
+            if (!item || typeof item !== 'object') {
+                throw new BadRequestException('Invalid guardian entry');
+            }
+            const g = item as any;
+            const fullName = String(g.fullName ?? '').trim();
+            const phoneE164 = String(g.phoneE164 ?? '').trim();
+            const relationship = String(g.relationship ?? '').trim();
+            const email = g.email ? String(g.email).trim() : undefined;
+
+            if (!fullName || !phoneE164 || !relationship) {
+                throw new BadRequestException(
+                    'Each guardian requires fullName, phoneE164, relationship',
+                );
+            }
+
+            guardians.push({ fullName, phoneE164, relationship, email: email || undefined });
+        }
+
+        return guardians;
     }
 }

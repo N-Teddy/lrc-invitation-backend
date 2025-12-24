@@ -21,7 +21,12 @@ async function bootstrap() {
     const docsPath = process.env.APP_DOCS_PATH ?? 'api/docs';
     app.setGlobalPrefix(globalPrefix);
 
-    app.use(helmet());
+    app.use(
+        helmet({
+            // Allow the frontend to load images from `/uploads` hosted on this API origin.
+            crossOriginResourcePolicy: { policy: 'cross-origin' },
+        }),
+    );
     app.use(
         compression({
             threshold: 0,

@@ -56,6 +56,20 @@ pnpm run format     # prettier write
 pnpm run format:check
 ```
 
+## MongoDB index notes
+
+If you see this error when creating users/children:
+
+`E11000 duplicate key error collection: ... users index: email_1 dup key: { email: null }`
+
+It means your `users.email` index is not using a partial/sparse unique index. Fix by dropping the old index and letting the app recreate it:
+
+```bash
+# in mongosh
+use lrc-jeuness
+db.users.dropIndex("email_1")
+```
+
 ## Compile and run the project
 
 ```bash

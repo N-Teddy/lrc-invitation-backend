@@ -37,7 +37,7 @@ export class User {
     @Prop({ required: true, trim: true })
     fullName: string;
 
-    @Prop({ trim: true, lowercase: true, unique: true })
+    @Prop({ trim: true, lowercase: true })
     email?: string;
 
     @Prop({ type: String, enum: UserRole, required: true })
@@ -92,5 +92,8 @@ UserSchema.index({ originTown: 1 });
 UserSchema.index({ preferredLanguage: 1 });
 UserSchema.index({ lifecycleStatus: 1 });
 UserSchema.index({ 'whatsApp.phoneE164': 1 }, { unique: false });
-UserSchema.index({ email: 1 }, { unique: true, sparse: true });
+UserSchema.index(
+    { email: 1 },
+    { unique: true, partialFilterExpression: { email: { $type: 'string' } } },
+);
 UserSchema.index({ googleId: 1 }, { unique: true, sparse: true });

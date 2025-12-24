@@ -5,6 +5,8 @@ import { ChildrenService } from './children.service';
 import { User, UserSchema } from '../schema/user.schema';
 import { ChildProfile, ChildProfileSchema } from '../schema/child-profile.schema';
 import { MonitorProfile, MonitorProfileSchema } from '../schema/monitor-profile.schema';
+import { Attendance, AttendanceSchema } from '../schema/attendance.schema';
+import { Activity, ActivitySchema } from '../schema/activity.schema';
 import { TownScopeService } from '../common/services/town-scope.service';
 import { SettingsModule } from '../settings/settings.module';
 import { MediaModule } from '../media/media.module';
@@ -18,6 +20,8 @@ import { AppConfigService } from '../config/app-config.service';
             { name: User.name, schema: UserSchema },
             { name: ChildProfile.name, schema: ChildProfileSchema },
             { name: MonitorProfile.name, schema: MonitorProfileSchema },
+            { name: Attendance.name, schema: AttendanceSchema },
+            { name: Activity.name, schema: ActivitySchema },
         ]),
         SettingsModule,
         MediaModule,
