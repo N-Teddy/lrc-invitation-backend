@@ -97,7 +97,7 @@ export class BirthdaysService {
         contextId: string,
         templateName: string,
     ) {
-        const appUrl = this.config.appBaseUrl;
+        const appUrl = this.config.frontendBaseUrl;
         for (const r of recipients) {
             const to = r.email ?? r.phoneE164;
             if (!to) continue;

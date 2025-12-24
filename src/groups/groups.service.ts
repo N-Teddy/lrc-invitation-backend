@@ -187,7 +187,7 @@ export class GroupsService {
                 continue;
             }
 
-            const baseRedirect = this.config.appBaseUrl.replace(/\/$/, '');
+            const baseRedirect = this.config.frontendBaseUrl;
             const openProfileUrl = `${baseRedirect}/children/${params.childId}`;
             const expiresAt = endOfDayInTimeZone(new Date(), TZ);
             const actions = [

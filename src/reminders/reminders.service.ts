@@ -290,7 +290,7 @@ export class RemindersService {
             const to = this.resolveTo(u);
             if (!to) continue;
 
-            const baseRedirect = this.config.appBaseUrl.replace(/\/$/, '');
+            const baseRedirect = this.config.frontendBaseUrl;
             const reminderUrl = `${baseRedirect}/reminders/${String(reminder._id)}`;
 
             const actions = [

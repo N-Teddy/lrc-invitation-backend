@@ -597,7 +597,7 @@ export class ReportingService {
             .exec();
 
         const subject = 'Post-activity attendance stats';
-        const baseRedirect = this.config.appBaseUrl.replace(/\/$/, '');
+        const baseRedirect = this.config.frontendBaseUrl;
         const detailsUrl = `${baseRedirect}/reports/activities/${activityId}/attendance-stats`;
         const expiresAt = endOfDayInTimeZone(new Date(), 'Africa/Douala');
         const message =

@@ -34,6 +34,12 @@ export class AppConfigService {
         return this.configService.get<string>('APP_BASE_URL', 'http://localhost:3000');
     }
 
+    get frontendBaseUrl(): string {
+        const configured = this.configService.get<string>('FRONTEND_BASE_URL');
+        const base = configured ?? 'http://localhost:5173';
+        return base.replace(/\/$/, '');
+    }
+
     get apiBaseUrl(): string {
         const configured = this.configService.get<string>('API_BASE_URL');
         if (configured) return configured.replace(/\/$/, '');

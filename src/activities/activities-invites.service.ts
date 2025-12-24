@@ -82,7 +82,7 @@ export class ActivitiesInvitesService {
 
         const invitedChildrenCount = (activity.invitedChildrenUserIds ?? []).length;
         const invitedMonitorCount = (activity.invitedMonitorUserIds ?? []).length;
-        const appUrl = `${this.config.appBaseUrl}/activities/${String(activity._id)}`;
+        const appUrl = `${this.config.frontendBaseUrl}/activities/${String(activity._id)}`;
         const expiresAt = endOfDayInTimeZone(start, TZ);
 
         let extraText = '';

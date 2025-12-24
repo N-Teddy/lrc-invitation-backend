@@ -61,6 +61,8 @@ export class AuthService {
             templateName: 'magic-link',
             templateData: {
                 fullName: user.fullName,
+                frontendBaseUrl: this.config.frontendBaseUrl,
+                token: magicToken,
                 magicLink: magicLinkUrl,
                 expiresInMinutes: 30,
             },
@@ -105,6 +107,8 @@ export class AuthService {
             templateName: 'magic-link',
             templateData: {
                 fullName: user.fullName,
+                frontendBaseUrl: this.config.frontendBaseUrl,
+                token: magicToken,
                 magicLink: magicLinkUrl,
                 expiresInMinutes: 30,
             },
@@ -186,7 +190,7 @@ export class AuthService {
     }
 
     private buildMagicLink(token: string): string {
-        return `${this.config.appBaseUrl}/auth/magic?token=${token}`;
+        return `${this.config.frontendBaseUrl}/auth/magic?token=${token}`;
     }
 
     private async generateTokens(userId: string, role: UserRole, monitorLevel?: MonitorLevel) {

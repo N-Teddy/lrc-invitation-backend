@@ -68,7 +68,7 @@ export class UsersController {
         const to = user.email as string | undefined;
         const magicLinkSent = !!(to && magicToken);
         if (magicLinkSent) {
-            const magicLinkUrl = `${this.config.appBaseUrl}/auth/magic?token=${magicToken}`;
+            const magicLinkUrl = `${this.config.frontendBaseUrl}/auth/magic?token=${magicToken}`;
             await this.notificationService.send({
                 userId: user.id,
                 to,
@@ -77,6 +77,8 @@ export class UsersController {
                 templateName: 'magic-link',
                 templateData: {
                     fullName: user.fullName,
+                    frontendBaseUrl: this.config.frontendBaseUrl,
+                    token: magicToken,
                     magicLink: magicLinkUrl,
                     expiresInMinutes: 30,
                 },
