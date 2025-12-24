@@ -10,6 +10,6 @@ import { SettingsService } from './settings.service';
     imports: [MongooseModule.forFeature([{ name: Settings.name, schema: SettingsSchema }])],
     providers: [SettingsService, AppConfigService],
     controllers: [SettingsController],
-    exports: [SettingsService],
+    exports: [SettingsService, AppConfigService],
 })
 export class SettingsModule {}

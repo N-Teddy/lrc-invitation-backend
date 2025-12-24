@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from '../users/users.service';
 import { RegisterRequestDto, GoogleSignInDto } from '../dtos/request/auth.dto';
-import { MonitorLevel, UserRole } from '../common/enums/user.enum';
+import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { NotificationService } from '../notifications/notifications.service';
 import { NotificationContextType } from '../common/enums/notification.enum';
 import { AppConfigService } from '../config/app-config.service';
@@ -44,9 +44,9 @@ export class AuthService {
             email: dto.email,
             whatsAppPhoneE164: dto.phoneE164,
             lifecycleStatus: undefined,
-            preferredLanguage: undefined,
+            preferredLanguage: dto.preferredLanguage,
             originTown: undefined,
-            whatsAppOptIn: true,
+            whatsAppOptIn: dto.whatsAppOptIn ?? true,
             registrationPendingApproval: isMonitorPending,
             magicToken,
             magicExpiresAt,
@@ -54,7 +54,7 @@ export class AuthService {
 
         const magicLinkUrl = this.buildMagicLink(magicToken);
         await this.notificationService.send({
-            userId: String(user._id),
+            userId: user.id,
             to: user.email ?? '',
             subject: 'Your sign-in link',
             message: `Hello ${user.fullName},\n\nUse this link to sign in: ${magicLinkUrl}\nThis link expires in 30 minutes.`,
@@ -65,10 +65,54 @@ export class AuthService {
                 expiresInMinutes: 30,
             },
             contextType: NotificationContextType.Reminder,
-            contextId: String(user._id),
+            contextId: user.id,
         });
 
-        return { message: 'Magic link sent', userId: user._id };
+        return { message: 'Magic link sent', userId: user.id };
+    }
+
+    async requestMagicLink(email: string) {
+        const safeMessage = 'If an account exists for this email, you will receive a sign-in link.';
+        if (this.config.notificationProvider === 'email' && !email) {
+            throw new BadRequestException('Email is required');
+        }
+
+        const normalizedEmail = email.toLowerCase();
+        const user = await this.usersService.findByEmail(normalizedEmail);
+        if (
+            !user ||
+            user.role !== UserRole.Monitor ||
+            user.lifecycleStatus !== LifecycleStatus.Active ||
+            user.registrationPendingApproval
+        ) {
+            return { message: safeMessage };
+        }
+
+        if (!user.email) {
+            return { message: safeMessage };
+        }
+
+        const magicToken = uuidv4();
+        const magicExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+        await this.usersService.setMagicToken(user.id, magicToken, magicExpiresAt);
+
+        const magicLinkUrl = this.buildMagicLink(magicToken);
+        await this.notificationService.send({
+            userId: user.id,
+            to: user.email,
+            subject: 'Your sign-in link',
+            message: `Hello ${user.fullName},\n\nUse this link to sign in: ${magicLinkUrl}\nThis link expires in 30 minutes.`,
+            templateName: 'magic-link',
+            templateData: {
+                fullName: user.fullName,
+                magicLink: magicLinkUrl,
+                expiresInMinutes: 30,
+            },
+            contextType: NotificationContextType.Reminder,
+            contextId: user.id,
+        });
+
+        return { message: safeMessage };
     }
 
     async exchangeMagicLink(token: string) {
@@ -81,11 +125,11 @@ export class AuthService {
         }
 
         const { accessToken, refreshToken } = await this.generateTokens(
-            String(user._id),
+            user.id,
             user.role,
             user.monitorLevel,
         );
-        await this.usersService.clearMagicToken(user._id);
+        await this.usersService.clearMagicToken(user.id);
         return { accessToken, refreshToken };
     }
 
@@ -131,14 +175,14 @@ export class AuthService {
                 whatsAppOptIn: false,
             });
         } else {
-            await this.usersService.linkGoogle(user._id, payload.sub, payload.email);
+            await this.usersService.linkGoogle(user.id, payload.sub, payload.email);
         }
 
         if (user.registrationPendingApproval) {
             throw new UnauthorizedException('Awaiting approval');
         }
 
-        return this.generateTokens(String(user._id), user.role, user.monitorLevel);
+        return this.generateTokens(user.id, user.role, user.monitorLevel);
     }
 
     private buildMagicLink(token: string): string {

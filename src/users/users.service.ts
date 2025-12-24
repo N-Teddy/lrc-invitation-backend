@@ -57,6 +57,12 @@ export class UsersService {
         return user ? this.normalizeUser(user) : null;
     }
 
+    async setMagicToken(userId: string | Types.ObjectId, magicToken: string, magicExpiresAt: Date) {
+        await this.userModel
+            .findByIdAndUpdate(userId, { $set: { magicToken, magicExpiresAt } })
+            .exec();
+    }
+
     async clearMagicToken(userId: string | Types.ObjectId) {
         await this.userModel
             .findByIdAndUpdate(userId, { $unset: { magicToken: '', magicExpiresAt: '' } })
@@ -179,6 +185,11 @@ export class UsersService {
             return user;
         }
         const id = user._id ? String(user._id) : undefined;
-        return { ...user, id };
+        const normalized: Record<string, any> = { ...user, id };
+        delete normalized._id;
+        delete normalized.__v;
+        delete normalized.magicToken;
+        delete normalized.magicExpiresAt;
+        return normalized;
     }
 }

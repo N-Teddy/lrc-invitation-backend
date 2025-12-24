@@ -5,10 +5,15 @@ import { UserResponseDto } from '../dtos/response/user.dto';
 import {
     RegisterRequestDto,
     MagicLinkExchangeDto,
+    MagicLinkRequestDto,
     RefreshTokenDto,
     GoogleSignInDto,
 } from '../dtos/request/auth.dto';
-import { AuthTokensResponseDto } from '../dtos/response/auth.dto';
+import {
+    AuthTokensResponseDto,
+    MagicLinkRequestResponseDto,
+    RegisterResponseDto,
+} from '../dtos/response/auth.dto';
 import { AuthService } from './auth.service';
 import { Public } from '../common/decorators/public.decorator';
 
@@ -20,8 +25,16 @@ export class AuthController {
 
     @Public()
     @Post('register')
+    @ApiOkResponse({ type: RegisterResponseDto })
     register(@Body() dto: RegisterRequestDto) {
         return this.authService.register(dto);
+    }
+
+    @Public()
+    @Post('magic-link/request')
+    @ApiOkResponse({ type: MagicLinkRequestResponseDto })
+    requestMagicLink(@Body() dto: MagicLinkRequestDto) {
+        return this.authService.requestMagicLink(dto.email);
     }
 
     @Public()

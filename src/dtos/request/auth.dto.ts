@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString } from 'class-validator';
 import { MonitorLevel, UserRole } from '../../common/enums/user.enum';
 
 export class RegisterRequestDto {
@@ -7,13 +7,22 @@ export class RegisterRequestDto {
     @IsString()
     fullName: string;
 
-    @ApiProperty()
+    @ApiProperty({ required: false, description: 'Optional for email-only environments' })
     @IsString()
-    phoneE164: string;
+    @IsOptional()
+    phoneE164?: string;
 
     @ApiProperty()
-    @IsString()
+    @IsEmail()
     email: string;
+
+    @ApiProperty({
+        required: false,
+        description: 'Preferred UI/notification language (e.g., en, fr)',
+    })
+    @IsString()
+    @IsOptional()
+    preferredLanguage?: string;
 
     @ApiProperty({ enum: UserRole, enumName: 'UserRole' })
     @IsEnum(UserRole)
@@ -34,6 +43,12 @@ export class MagicLinkExchangeDto {
     @ApiProperty()
     @IsString()
     token: string;
+}
+
+export class MagicLinkRequestDto {
+    @ApiProperty()
+    @IsEmail()
+    email: string;
 }
 
 export class RefreshTokenDto {
