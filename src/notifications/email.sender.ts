@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Transporter } from 'nodemailer';
+import * as nodemailer from 'nodemailer';
 import {
     NotificationSender,
     SendOptions,
@@ -10,39 +11,24 @@ import { renderEmailTemplate } from '../common/utils/template.util';
 @Injectable()
 export class EmailNotificationSender implements NotificationSender {
     private readonly logger = new Logger(EmailNotificationSender.name);
-    private transporter?: Transporter;
+    private readonly transporter: Transporter;
 
     constructor(private readonly config: AppConfigService) {
-        import('nodemailer')
-            .then((nodemailer) => {
-                const nm: any = (nodemailer as any)?.default ?? nodemailer;
-                this.transporter = nm.createTransport({
-                    host: this.config.mailHost,
-                    port: this.config.mailPort,
-                    secure: false,
-                    auth:
-                        this.config.mailUser && this.config.mailPass
-                            ? {
-                                  user: this.config.mailUser,
-                                  pass: this.config.mailPass,
-                              }
-                            : undefined,
-                });
-            })
-            .catch(() => {
-                this.logger.warn(
-                    'Nodemailer not available; email notifications will fail until dependencies are installed.',
-                );
-                this.transporter = undefined;
-            });
+        this.transporter = nodemailer.createTransport({
+            host: this.config.mailHost,
+            port: this.config.mailPort,
+            secure: false,
+            auth:
+                this.config.mailUser && this.config.mailPass
+                    ? {
+                          user: this.config.mailUser,
+                          pass: this.config.mailPass,
+                      }
+                    : undefined,
+        });
     }
 
     async send(options: SendOptions): Promise<void> {
-        if (!this.transporter) {
-            throw new Error(
-                'Email transport not configured; install nodemailer and set MAIL_* envs.',
-            );
-        }
         const from = this.config.mailFrom;
         try {
             const subject = options.subject ?? 'Notification';

@@ -28,10 +28,21 @@ async function bootstrap() {
         }),
     );
     app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
+    const corsOriginsRaw = process.env.CORS_ORIGIN?.trim() ?? '*';
+    const corsCredentials = process.env.CORS_CREDENTIALS === 'true';
+    const corsOrigins =
+        corsOriginsRaw === '*'
+            ? '*'
+            : corsOriginsRaw
+                  .split(',')
+                  .map((x) => x.trim())
+                  .filter(Boolean);
+
     app.enableCors({
-        origin: process.env.CORS_ORIGIN?.split(',') ?? '*',
+        origin: corsOrigins === '*' ? (corsCredentials ? true : '*') : corsOrigins,
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-        credentials: true,
+        credentials: corsCredentials,
+        allowedHeaders: ['Content-Type', 'Authorization'],
     });
 
     app.useGlobalPipes(
