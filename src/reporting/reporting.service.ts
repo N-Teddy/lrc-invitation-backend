@@ -6,7 +6,7 @@ import { Attendance, AttendanceDocument } from '../schema/attendance.schema';
 import { User, UserDocument } from '../schema/user.schema';
 import { ActivityType, Town } from '../common/enums/activity.enum';
 import { AttendanceRoleAtTime } from '../common/enums/attendance.enum';
-import { MonitorLevel, UserRole } from '../common/enums/user.enum';
+import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { NotificationService } from '../notifications/notifications.service';
 import { NotificationContextType } from '../common/enums/notification.enum';
 import { TownScopeService } from '../common/services/town-scope.service';
@@ -116,6 +116,14 @@ export class ReportingService {
         const activity = await this.activityModel.findById(activityId).lean().exec();
         if (!activity) throw new NotFoundException('Activity not found');
         await this.assertCanReadActivityReports(activity, currentUser);
+
+        const isSuper = currentUser?.monitorLevel === MonitorLevel.Super;
+        if (!isSuper && activity.type === ActivityType.Conference) {
+            const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+            if (!userTown) throw new ForbiddenException('Monitor town not set');
+            return this.getActivityAttendanceStats(activityId, { originTown: userTown });
+        }
+
         return this.getActivityAttendanceStats(activityId);
     }
 
@@ -197,8 +205,18 @@ export class ReportingService {
         const childrenRow = totalsRows.find((r) => r._id === AttendanceRoleAtTime.Child);
         const monitorRow = totalsRows.find((r) => r._id === AttendanceRoleAtTime.Monitor);
 
-        const childrenTotals = toTotals(childrenRow?.present ?? 0, childrenRow?.total ?? 0);
-        const monitorTotals = toTotals(monitorRow?.present ?? 0, monitorRow?.total ?? 0);
+        const childrenPresent = childrenRow?.present ?? 0;
+        const monitorsPresent = monitorRow?.present ?? 0;
+
+        const eligible = await this.getEligibleTotalsForActivity(activity, scope);
+        const childrenTotals = toTotals(
+            childrenPresent,
+            Math.max(eligible.childrenTotal, childrenPresent),
+        );
+        const monitorTotals = toTotals(
+            monitorsPresent,
+            Math.max(eligible.monitorsTotal, monitorsPresent),
+        );
 
         const attendance = await this.attendanceModel
             .findOne({ activityId: new Types.ObjectId(activityId) })
@@ -305,154 +323,7 @@ export class ReportingService {
 
         const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
         if (!userTown) throw new ForbiddenException('Monitor town not set');
-
-        const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0));
-        const end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0));
-
-        const activities = await this.activityModel
-            .find({
-                startDate: { $gte: start, $lt: end },
-                $or: [
-                    { type: ActivityType.Conference },
-                    { town: userTown, type: { $ne: ActivityType.Conference } },
-                ],
-            })
-            .select({ _id: 1, type: 1, town: 1 })
-            .lean()
-            .exec();
-
-        const activityIds = activities.map((a) => a._id);
-        const activityById = new Map<string, { type: ActivityType; town: Town }>();
-        for (const a of activities) {
-            activityById.set(String(a._id), {
-                type: a.type as ActivityType,
-                town: a.town as Town,
-            });
-        }
-
-        if (!activityIds.length) {
-            return {
-                year,
-                totalsByRole: {
-                    children: toTotals(0, 0),
-                    monitors: toTotals(0, 0),
-                },
-                byTown: [],
-                byActivityType: [],
-                byClassificationLabel: [],
-                byChildGroup: [],
-            };
-        }
-
-        const pipeline: any[] = [
-            { $match: { activityId: { $in: activityIds } } },
-            { $unwind: '$entries' },
-            {
-                $project: {
-                    activityId: '$activityId',
-                    present: '$entries.present',
-                    roleAtTime: '$entries.roleAtTime',
-                    originTownAtTime: '$entries.originTownAtTime',
-                    groupAtTime: '$entries.groupAtTime',
-                    classificationLabel: '$entries.classificationLabel',
-                },
-            },
-            {
-                $addFields: {
-                    activityIdStr: { $toString: '$activityId' },
-                },
-            },
-            {
-                $facet: {
-                    totals: [
-                        {
-                            $group: {
-                                _id: '$roleAtTime',
-                                total: { $sum: 1 },
-                                present: {
-                                    $sum: {
-                                        $cond: [{ $eq: ['$present', true] }, 1, 0],
-                                    },
-                                },
-                            },
-                        },
-                    ],
-                    byTown: [
-                        {
-                            $group: {
-                                _id: { $ifNull: ['$originTownAtTime', 'unknown'] },
-                                count: { $sum: 1 },
-                            },
-                        },
-                    ],
-                    byClassification: [
-                        {
-                            $group: {
-                                _id: { $ifNull: ['$classificationLabel', 'unclassified'] },
-                                count: { $sum: 1 },
-                            },
-                        },
-                    ],
-                    byChildGroup: [
-                        { $match: { roleAtTime: AttendanceRoleAtTime.Child } },
-                        {
-                            $group: {
-                                _id: { $ifNull: ['$groupAtTime', 'unknown'] },
-                                count: { $sum: 1 },
-                            },
-                        },
-                    ],
-                    byActivityType: [
-                        {
-                            $group: {
-                                _id: '$activityIdStr',
-                                count: { $sum: 1 },
-                            },
-                        },
-                    ],
-                },
-            },
-        ];
-
-        const agg = await this.attendanceModel.aggregate(pipeline).exec();
-        const out = agg?.[0] ?? {};
-
-        const totalsRows: Array<{ _id: string; total: number; present: number }> = out.totals ?? [];
-        const childrenRow = totalsRows.find((r) => r._id === AttendanceRoleAtTime.Child);
-        const monitorRow = totalsRows.find((r) => r._id === AttendanceRoleAtTime.Monitor);
-
-        const byActivityTypeCounts = new Map<ActivityType, number>();
-        for (const row of out.byActivityType ?? []) {
-            const meta = activityById.get(String(row._id));
-            if (!meta) continue;
-            byActivityTypeCounts.set(
-                meta.type,
-                (byActivityTypeCounts.get(meta.type) ?? 0) + row.count,
-            );
-        }
-
-        return {
-            year,
-            totalsByRole: {
-                children: toTotals(childrenRow?.present ?? 0, childrenRow?.total ?? 0),
-                monitors: toTotals(monitorRow?.present ?? 0, monitorRow?.total ?? 0),
-            },
-            byTown: normalizeCounts(
-                (out.byTown ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),
-            ),
-            byActivityType: normalizeCounts(
-                [...byActivityTypeCounts.entries()].map(([key, count]) => ({ key, count })),
-            ),
-            byClassificationLabel: normalizeCounts(
-                (out.byClassification ?? []).map((x: any) => ({
-                    key: String(x._id),
-                    count: x.count,
-                })),
-            ),
-            byChildGroup: normalizeCounts(
-                (out.byChildGroup ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),
-            ),
-        };
+        return this.getYearlyAttendanceSummary(year, { originTown: userTown });
     }
 
     async getYearlyAttendanceSummary(
@@ -465,13 +336,24 @@ export class ReportingService {
         const activityQuery: Record<string, any> = {
             startDate: { $gte: start, $lt: end },
         };
-        if (scope?.activityTown) {
+        if (scope?.originTown) {
+            activityQuery.$or = [
+                { type: ActivityType.Conference },
+                { town: scope.originTown, type: { $ne: ActivityType.Conference } },
+            ];
+        } else if (scope?.activityTown) {
             activityQuery.town = scope.activityTown;
         }
 
         const activities = await this.activityModel
             .find(activityQuery)
-            .select({ _id: 1, type: 1, town: 1 })
+            .select({
+                _id: 1,
+                type: 1,
+                town: 1,
+                invitedChildrenUserIds: 1,
+                invitedMonitorUserIds: 1,
+            })
             .lean()
             .exec();
         const activityIds = activities.map((a) => a._id);
@@ -645,8 +527,17 @@ export class ReportingService {
             }
         }
 
-        const childrenTotals = toTotals(childrenRow?.present ?? 0, childrenRow?.total ?? 0);
-        const monitorTotals = toTotals(monitorRow?.present ?? 0, monitorRow?.total ?? 0);
+        const eligible = await this.getEligibleTotalsForYear(activities, scope);
+        const childrenPresent = childrenRow?.present ?? 0;
+        const monitorsPresent = monitorRow?.present ?? 0;
+        const childrenTotals = toTotals(
+            childrenPresent,
+            Math.max(eligible.childrenTotal, childrenPresent),
+        );
+        const monitorTotals = toTotals(
+            monitorsPresent,
+            Math.max(eligible.monitorsTotal, monitorsPresent),
+        );
         const overallPresentCount =
             (childrenTotals.present ?? 0) + (monitorTotals.present ?? 0) + externalPresentCount;
 
@@ -731,7 +622,7 @@ export class ReportingService {
 
         const subject = 'Post-activity attendance stats';
         const baseRedirect = this.config.frontendBaseUrl;
-        const detailsUrl = `${baseRedirect}/reports/activities/${activityId}/attendance-stats`;
+        const detailsUrl = `${baseRedirect}/reports?mode=activity&activityId=${activityId}`;
         const expiresAt = endOfDayInTimeZone(new Date(), 'Africa/Douala');
         const message =
             `Activity ${stats.activityType} (${stats.activityTown})\\n` +
@@ -780,5 +671,104 @@ export class ReportingService {
         if ((activity.town as Town | undefined) !== userTown) {
             throw new ForbiddenException('Not allowed to view other towns');
         }
+    }
+
+    private async getEligibleTotalsForActivity(
+        activity: Record<string, any>,
+        scope?: { originTown?: Town },
+    ): Promise<{ childrenTotal: number; monitorsTotal: number }> {
+        const invitedChildrenTotal = (activity.invitedChildrenUserIds ?? []).length;
+        const invitedMonitorsTotal = (activity.invitedMonitorUserIds ?? []).length;
+        if (!scope?.originTown) {
+            return { childrenTotal: invitedChildrenTotal, monitorsTotal: invitedMonitorsTotal };
+        }
+
+        const town = scope.originTown;
+        if (activity.type !== ActivityType.Conference) {
+            if ((activity.town as Town | undefined) !== town) {
+                return { childrenTotal: 0, monitorsTotal: 0 };
+            }
+            return { childrenTotal: invitedChildrenTotal, monitorsTotal: invitedMonitorsTotal };
+        }
+
+        const invitedChildIds: Types.ObjectId[] = (activity.invitedChildrenUserIds ?? []).map(
+            (x: any) => (typeof x === 'string' ? new Types.ObjectId(x) : (x as Types.ObjectId)),
+        );
+
+        const childrenTotal = invitedChildIds.length
+            ? await this.userModel
+                  .countDocuments({
+                      _id: { $in: invitedChildIds },
+                      role: UserRole.Child,
+                      originTown: town,
+                  })
+                  .exec()
+            : 0;
+
+        const monitorsTotal = await this.userModel
+            .countDocuments({
+                role: UserRole.Monitor,
+                lifecycleStatus: LifecycleStatus.Active,
+                originTown: town,
+            })
+            .exec();
+
+        return { childrenTotal, monitorsTotal };
+    }
+
+    private async getEligibleTotalsForYear(
+        activities: Array<Record<string, any>>,
+        scope?: { activityTown?: Town; originTown?: Town },
+    ): Promise<{ childrenTotal: number; monitorsTotal: number }> {
+        if (!scope?.originTown) {
+            return {
+                childrenTotal: activities.reduce(
+                    (sum, a) => sum + ((a.invitedChildrenUserIds ?? []).length || 0),
+                    0,
+                ),
+                monitorsTotal: activities.reduce(
+                    (sum, a) => sum + ((a.invitedMonitorUserIds ?? []).length || 0),
+                    0,
+                ),
+            };
+        }
+
+        const town = scope.originTown;
+        const monitorsTotalInTown = await this.userModel
+            .countDocuments({
+                role: UserRole.Monitor,
+                lifecycleStatus: LifecycleStatus.Active,
+                originTown: town,
+            })
+            .exec();
+
+        let childrenTotal = 0;
+        let monitorsTotal = 0;
+
+        for (const a of activities) {
+            if (a.type === ActivityType.Conference) {
+                const invitedChildIds: Types.ObjectId[] = (a.invitedChildrenUserIds ?? []).map(
+                    (x: any) =>
+                        typeof x === 'string' ? new Types.ObjectId(x) : (x as Types.ObjectId),
+                );
+                if (invitedChildIds.length) {
+                    childrenTotal += await this.userModel
+                        .countDocuments({
+                            _id: { $in: invitedChildIds },
+                            role: UserRole.Child,
+                            originTown: town,
+                        })
+                        .exec();
+                }
+                monitorsTotal += monitorsTotalInTown;
+                continue;
+            }
+
+            if ((a.town as Town | undefined) !== town) continue;
+            childrenTotal += (a.invitedChildrenUserIds ?? []).length || 0;
+            monitorsTotal += (a.invitedMonitorUserIds ?? []).length || 0;
+        }
+
+        return { childrenTotal, monitorsTotal };
     }
 }

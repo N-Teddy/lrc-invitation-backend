@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -42,7 +42,11 @@ export class ReportingController {
             return this.reportingService.getYearlyAttendanceSummaryForUser(year, currentUser);
         }
 
-        return this.reportingService.getYearlyAttendanceSummary(year, { activityTown: town });
+        if (!town) {
+            throw new BadRequestException('Town is required for yearly summary');
+        }
+
+        return this.reportingService.getYearlyAttendanceSummary(year, { originTown: town });
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Super])
