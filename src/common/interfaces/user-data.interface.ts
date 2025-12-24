@@ -8,6 +8,7 @@ export interface CreateUserData {
     email?: string;
     dateOfBirth?: string;
     originTown?: Town;
+    homeTown?: Town;
     preferredLanguage?: string;
     lifecycleStatus?: LifecycleStatus;
 

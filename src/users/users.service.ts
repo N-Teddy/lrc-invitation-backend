@@ -1,14 +1,20 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../schema/user.schema';
+import { MonitorProfile, MonitorProfileDocument } from '../schema/monitor-profile.schema';
 import { CreateUserData, UpdateUserData } from '../common/interfaces/user-data.interface';
 import { v4 as uuidv4 } from 'uuid';
-import { UserRole } from '../common/enums/user.enum';
+import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
+import { Town } from '../common/enums/activity.enum';
 
 @Injectable()
 export class UsersService {
-    constructor(@InjectModel(User.name) private readonly userModel: Model<UserDocument>) {}
+    constructor(
+        @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+        @InjectModel(MonitorProfile.name)
+        private readonly monitorProfileModel: Model<MonitorProfileDocument>,
+    ) {}
 
     async create(data: CreateUserData): Promise<Record<string, any>> {
         const user = new this.userModel({
@@ -34,6 +40,27 @@ export class UsersService {
                 : undefined,
         });
         const saved = await user.save();
+
+        if (saved.role === UserRole.Monitor) {
+            const userTown = (data.homeTown ?? data.originTown) as Town | undefined;
+            if (userTown) {
+                await this.monitorProfileModel
+                    .updateOne(
+                        { userId: saved._id },
+                        {
+                            $set: {
+                                userId: saved._id,
+                                homeTown: userTown,
+                                level: (data.monitorLevel ?? saved.monitorLevel) as MonitorLevel,
+                                preferredLanguage: data.preferredLanguage,
+                            },
+                        },
+                        { upsert: true },
+                    )
+                    .exec();
+            }
+        }
+
         return this.normalizeUser(saved.toObject());
     }
 
@@ -134,6 +161,18 @@ export class UsersService {
         if (!user) {
             throw new NotFoundException('User not found');
         }
+
+        if (user.role === UserRole.Monitor && (data.homeTown || data.originTown)) {
+            const town = (data.homeTown ?? data.originTown) as Town;
+            await this.monitorProfileModel
+                .updateOne(
+                    { userId: new Types.ObjectId(String(id)) },
+                    { $set: { userId: new Types.ObjectId(String(id)), homeTown: town } },
+                    { upsert: true },
+                )
+                .exec();
+        }
+
         return this.normalizeUser(user);
     }
 
@@ -195,6 +234,125 @@ export class UsersService {
             magicToken: isPending ? magicToken : undefined,
             magicExpiresAt: isPending ? magicExpiresAt : undefined,
         };
+    }
+
+    async assertCanApproveMonitorRegistration(approver: Record<string, any>, targetUserId: string) {
+        if (approver?.role !== UserRole.Monitor || approver?.monitorLevel !== MonitorLevel.Super) {
+            throw new ForbiddenException('Only Super Monitors can approve registrations');
+        }
+
+        const profileTown = await this.getMonitorHomeTown(targetUserId);
+        let targetTown = profileTown;
+        if (!targetTown) {
+            const user = await this.userModel
+                .findById(targetUserId)
+                .select({ originTown: 1 })
+                .lean()
+                .exec();
+            targetTown = (user as any)?.originTown as Town | undefined;
+        }
+
+        if (!targetTown) {
+            // If town is not set, allow approval (but this should be prevented by registration validation).
+            return;
+        }
+
+        const hasTownSupers = await this.hasSuperMonitorsInTown(targetTown as Town);
+        if (!hasTownSupers) {
+            // Fallback rule: if the town has no super monitors, any super monitor can approve.
+            return;
+        }
+
+        const approverId = String(approver?._id ?? approver?.id ?? '');
+        const approverTown =
+            (await this.getMonitorHomeTown(approverId)) ??
+            (approver?.originTown as Town | undefined);
+
+        if (!approverTown || approverTown !== (targetTown as Town)) {
+            throw new ForbiddenException('You can only approve registrations for your town');
+        }
+    }
+
+    async findSuperMonitorsByTownForApproval(
+        town: Town,
+    ): Promise<
+        Array<{ id: string; email?: string; fullName: string; preferredLanguage?: string }>
+    > {
+        const townProfiles = await this.monitorProfileModel
+            .find({ homeTown: town })
+            .select({ userId: 1 })
+            .lean()
+            .exec();
+        const ids = townProfiles.map((p) => p.userId);
+        if (!ids.length) return [];
+
+        const users = await this.userModel
+            .find({
+                _id: { $in: ids },
+                role: UserRole.Monitor,
+                monitorLevel: MonitorLevel.Super,
+                lifecycleStatus: LifecycleStatus.Active,
+            })
+            .select({ _id: 1, fullName: 1, email: 1, preferredLanguage: 1 })
+            .lean()
+            .exec();
+
+        return users.map((u) => ({
+            id: String(u._id),
+            email: u.email as string | undefined,
+            fullName: u.fullName as string,
+            preferredLanguage: u.preferredLanguage as string | undefined,
+        }));
+    }
+
+    async findAllSuperMonitors(): Promise<
+        Array<{ id: string; email?: string; fullName: string; preferredLanguage?: string }>
+    > {
+        const users = await this.userModel
+            .find({
+                role: UserRole.Monitor,
+                monitorLevel: MonitorLevel.Super,
+                lifecycleStatus: LifecycleStatus.Active,
+            })
+            .select({ _id: 1, fullName: 1, email: 1, preferredLanguage: 1 })
+            .lean()
+            .exec();
+
+        return users.map((u) => ({
+            id: String(u._id),
+            email: u.email as string | undefined,
+            fullName: u.fullName as string,
+            preferredLanguage: u.preferredLanguage as string | undefined,
+        }));
+    }
+
+    async hasSuperMonitorsInTown(town: Town): Promise<boolean> {
+        const townProfiles = await this.monitorProfileModel
+            .find({ homeTown: town })
+            .select({ userId: 1 })
+            .lean()
+            .exec();
+        const ids = townProfiles.map((p) => p.userId);
+        if (!ids.length) return false;
+
+        const count = await this.userModel
+            .countDocuments({
+                _id: { $in: ids },
+                role: UserRole.Monitor,
+                monitorLevel: MonitorLevel.Super,
+                lifecycleStatus: LifecycleStatus.Active,
+            })
+            .exec();
+        return count > 0;
+    }
+
+    async getMonitorHomeTown(userId: string | Types.ObjectId): Promise<Town | undefined> {
+        const profile = await this.monitorProfileModel
+            .findOne({ userId: new Types.ObjectId(String(userId)) })
+            .select({ homeTown: 1 })
+            .lean()
+            .exec();
+        return profile?.homeTown as Town | undefined;
     }
 
     private normalizeUser(user: Record<string, any>): Record<string, any> {

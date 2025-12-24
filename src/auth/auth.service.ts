@@ -8,6 +8,7 @@ import { NotificationService } from '../notifications/notifications.service';
 import { NotificationContextType } from '../common/enums/notification.enum';
 import { AppConfigService } from '../config/app-config.service';
 import { GoogleService } from '../common/third-party/google.service';
+import { Town } from '../common/enums/activity.enum';
 
 const ACCESS_TOKEN_EXPIRES_IN = '24h';
 const REFRESH_TOKEN_EXPIRES_IN = '7d';
@@ -29,10 +30,17 @@ export class AuthService {
         if (this.config.notificationProvider === 'email' && !dto.email) {
             throw new BadRequestException('Email is required for registration');
         }
-        const isMonitorPending =
-            dto.role === UserRole.Monitor &&
-            (dto.monitorLevel === MonitorLevel.Aspiring ||
-                dto.monitorLevel === MonitorLevel.Official);
+        if (dto.role === UserRole.Monitor && !dto.homeTown) {
+            throw new BadRequestException('homeTown is required for monitor registration');
+        }
+        const monitorLevel =
+            dto.role === UserRole.Monitor ? (dto.monitorLevel ?? MonitorLevel.Aspiring) : undefined;
+
+        if (dto.role === UserRole.Monitor && monitorLevel === MonitorLevel.Super) {
+            throw new BadRequestException('Super monitor cannot be self-registered');
+        }
+
+        const isMonitorPending = dto.role === UserRole.Monitor;
 
         const magicToken = uuidv4();
         const magicExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
@@ -40,12 +48,13 @@ export class AuthService {
         const user = await this.usersService.create({
             fullName: dto.fullName,
             role: dto.role,
-            monitorLevel: dto.monitorLevel,
+            monitorLevel,
             email: dto.email,
             whatsAppPhoneE164: dto.phoneE164,
             lifecycleStatus: undefined,
             preferredLanguage: dto.preferredLanguage,
-            originTown: undefined,
+            originTown: dto.homeTown,
+            homeTown: dto.homeTown,
             whatsAppOptIn: dto.whatsAppOptIn ?? true,
             registrationPendingApproval: isMonitorPending,
             magicToken,
@@ -70,7 +79,67 @@ export class AuthService {
             contextId: user.id,
         });
 
+        if (isMonitorPending && dto.homeTown) {
+            await this.notifySuperMonitorsForApproval(user, dto.homeTown);
+        }
+
         return { message: 'Magic link sent', userId: user.id };
+    }
+
+    private async notifySuperMonitorsForApproval(user: Record<string, any>, town: Town) {
+        const townSupers = await this.usersService.findSuperMonitorsByTownForApproval(town);
+        const recipients = townSupers.length
+            ? townSupers
+            : await this.usersService.findAllSuperMonitors();
+
+        const appUrl = `${this.config.frontendBaseUrl}/admin/users?pending=true&userId=${encodeURIComponent(
+            String(user.id),
+        )}`;
+
+        const subject = `Approval needed: ${user.fullName} (${town})`;
+        const message =
+            `A new monitor registration is awaiting approval.\n\n` +
+            `Name: ${user.fullName}\n` +
+            `Email: ${user.email ?? '—'}\n` +
+            `Town: ${town}\n\n` +
+            `Open approvals: ${appUrl}`;
+
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        await Promise.all(
+            recipients
+                .filter((r) => !!r.email)
+                .map((r) =>
+                    this.notificationService.send({
+                        userId: r.id,
+                        to: r.email ?? '',
+                        subject,
+                        message,
+                        templateName: 'monitor-registration-approval',
+                        templateData: {
+                            approverName: r.fullName,
+                            registrantName: user.fullName,
+                            registrantEmail: user.email ?? '',
+                            town,
+                            approvalsUrl: appUrl,
+                        },
+                        actions: [
+                            {
+                                id: 'OPEN_APPROVALS',
+                                label: 'Open approvals',
+                                redirectUrl: appUrl,
+                            },
+                        ],
+                        conversation: {
+                            state: 'approval_request',
+                            allowedResponses: ['OPEN_APPROVALS'],
+                            expiresAt,
+                        },
+                        contextType: NotificationContextType.Reminder,
+                        contextId: `registration_approval:${String(user.id)}`,
+                    }),
+                ),
+        );
     }
 
     async requestMagicLink(email: string) {

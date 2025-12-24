@@ -15,9 +15,13 @@ export class CreateActivityDto {
     @IsEnum(ActivityType)
     type: ActivityType;
 
-    @ApiProperty({ enum: Town })
+    @ApiPropertyOptional({
+        enum: Town,
+        description: 'Derived from the creator town for non-conferences',
+    })
     @IsEnum(Town)
-    town: Town;
+    @IsOptional()
+    town?: Town;
 
     @ApiProperty()
     @IsDateString()

@@ -62,7 +62,8 @@ export class UsersController {
     @Roles([UserRole.Monitor], [MonitorLevel.Super])
     @Post(':id/approve')
     @ApiOkResponse({ type: ApproveUserResponseDto })
-    async approve(@Param('id') id: string) {
+    async approve(@Param('id') id: string, @CurrentUser() currentUser: any) {
+        await this.usersService.assertCanApproveMonitorRegistration(currentUser, id);
         const { user, magicToken } = await this.usersService.approveMonitorRegistration(id);
 
         const to = user.email as string | undefined;

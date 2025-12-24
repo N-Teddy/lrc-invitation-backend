@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString } from 'class-validator';
 import { MonitorLevel, UserRole } from '../../common/enums/user.enum';
+import { Town } from '../../common/enums/activity.enum';
 
 export class RegisterRequestDto {
     @ApiProperty()
@@ -23,6 +24,15 @@ export class RegisterRequestDto {
     @IsString()
     @IsOptional()
     preferredLanguage?: string;
+
+    @ApiProperty({
+        enum: Town,
+        required: false,
+        description: 'Required for monitors; used for town scoping and approvals',
+    })
+    @IsEnum(Town)
+    @IsOptional()
+    homeTown?: Town;
 
     @ApiProperty({ enum: UserRole, enumName: 'UserRole' })
     @IsEnum(UserRole)

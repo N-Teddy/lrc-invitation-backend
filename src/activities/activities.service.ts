@@ -43,8 +43,9 @@ export class ActivitiesService {
     ) {}
 
     async create(dto: CreateActivityDto, currentUser: Record<string, any>) {
-        await this.assertCanCreate(dto, currentUser);
-        const activityPayload = this.normalizeCreatePayload(dto, currentUser);
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        await this.assertCanCreate(dto, currentUser, userTown);
+        const activityPayload = this.normalizeCreatePayload(dto, currentUser, userTown);
 
         const { invitedChildrenUserIds, invitedMonitorUserIds } =
             await this.computeInvitations(activityPayload);
@@ -121,7 +122,7 @@ export class ActivitiesService {
         const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
         await this.assertCanEdit(existing, currentUser, userTown);
 
-        const payload = this.normalizeUpdatePayload(existing, dto, currentUser, userTown);
+        const payload = this.normalizeUpdatePayload(existing, dto, currentUser);
         const updated = await this.activityModel
             .findByIdAndUpdate(id, { $set: payload }, { new: true })
             .lean()
@@ -346,7 +347,11 @@ export class ActivitiesService {
         };
     }
 
-    private normalizeCreatePayload(dto: CreateActivityDto, currentUser: Record<string, any>) {
+    private normalizeCreatePayload(
+        dto: CreateActivityDto,
+        currentUser: Record<string, any>,
+        userTown?: Town,
+    ) {
         const startDate = new Date(dto.startDate);
         const endDate = new Date(dto.endDate);
         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
@@ -357,7 +362,7 @@ export class ActivitiesService {
         }
 
         const type = dto.type;
-        const town = type === ActivityType.Conference ? Town.Yaounde : dto.town;
+        const town = type === ActivityType.Conference ? Town.Yaounde : userTown;
 
         if (type === ActivityType.Conference) {
             if (!isValidConferenceDuration(dto.conferenceDurationDays)) {
@@ -365,6 +370,10 @@ export class ActivitiesService {
             }
         } else if (dto.conferenceDurationDays !== undefined) {
             throw new BadRequestException('conferenceDurationDays is only allowed for conferences');
+        }
+
+        if (!town) {
+            throw new ForbiddenException('Monitor town not set');
         }
 
         return {
@@ -383,12 +392,17 @@ export class ActivitiesService {
         existing: Record<string, any>,
         dto: UpdateActivityDto,
         currentUser: Record<string, any>,
-        userTown?: Town,
     ) {
         const merged: any = {
             ...existing,
             ...dto,
         };
+
+        if (dto.town !== undefined) {
+            throw new BadRequestException(
+                'town cannot be edited; it is derived from the activity scope',
+            );
+        }
 
         // Conferences always remain in Yaoundé.
         if (merged.type === ActivityType.Conference) {
@@ -418,16 +432,6 @@ export class ActivitiesService {
             throw new ForbiddenException('Only Super Monitors can manage conferences');
         }
 
-        // Town edits: only relevant for non-conference activities.
-        if (existing.type !== ActivityType.Conference && dto.town) {
-            // Enforce town-scope for non-super monitors.
-            if (currentUser?.monitorLevel !== MonitorLevel.Super) {
-                if (!userTown || dto.town !== userTown) {
-                    throw new ForbiddenException('Cannot change town outside your scope');
-                }
-            }
-        }
-
         const payload: any = {};
         if (dto.type !== undefined) payload.type = merged.type;
         if (dto.town !== undefined) payload.town = merged.town;
@@ -440,7 +444,11 @@ export class ActivitiesService {
         return payload;
     }
 
-    private async assertCanCreate(dto: CreateActivityDto, currentUser: Record<string, any>) {
+    private async assertCanCreate(
+        dto: CreateActivityDto,
+        currentUser: Record<string, any>,
+        userTown?: Town,
+    ) {
         if (currentUser?.role !== UserRole.Monitor) {
             throw new ForbiddenException('Only monitors can create activities');
         }
@@ -453,13 +461,7 @@ export class ActivitiesService {
         ) {
             throw new ForbiddenException('Only Super Monitors can create conferences');
         }
-        if (currentUser?.monitorLevel !== MonitorLevel.Super) {
-            const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
-            if (!userTown) throw new ForbiddenException('Monitor town not set');
-            if (dto.type !== ActivityType.Conference && dto.town !== userTown) {
-                throw new ForbiddenException('Monitors can only create activities for their town');
-            }
-        }
+        if (!userTown) throw new ForbiddenException('Monitor town not set');
     }
 
     private async assertCanEdit(
