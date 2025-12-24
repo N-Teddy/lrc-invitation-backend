@@ -26,6 +26,21 @@ class AttendanceEntry {
     classificationLabel?: ClassificationLabel;
 }
 
+@Schema({ _id: false })
+class ExternalAttendanceEntry {
+    @Prop({ type: String, enum: ClassificationLabel, required: true })
+    classificationLabel: ClassificationLabel;
+
+    @Prop({ required: true })
+    externalId: string;
+
+    @Prop({ required: true, trim: true })
+    fullName: string;
+
+    @Prop({ type: String, enum: Town })
+    scopeTown?: Town;
+}
+
 @Schema({ timestamps: true })
 export class Attendance {
     @Prop({ type: Types.ObjectId, ref: 'Activity', required: true, unique: true })
@@ -39,6 +54,9 @@ export class Attendance {
 
     @Prop({ type: [AttendanceEntry], default: [] })
     entries: AttendanceEntry[];
+
+    @Prop({ type: [ExternalAttendanceEntry], default: [] })
+    externalEntries: ExternalAttendanceEntry[];
 }
 
 export const AttendanceSchema = SchemaFactory.createForClass(Attendance);

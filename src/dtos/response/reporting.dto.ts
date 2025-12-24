@@ -50,6 +50,12 @@ export class ActivityAttendanceStatsDto {
     @ApiProperty({ type: AttendanceByRoleDto })
     totalsByRole: AttendanceByRoleDto;
 
+    @ApiProperty({ description: 'Total present attendees not registered in the system.' })
+    externalPresentCount: number;
+
+    @ApiProperty({ description: 'Registered present + external present.' })
+    overallPresentCount: number;
+
     @ApiProperty({ type: [CountByKeyDto] })
     byOriginTown: CountByKeyDto[];
 
@@ -66,6 +72,12 @@ export class YearlyAttendanceSummaryDto {
 
     @ApiProperty({ type: AttendanceByRoleDto })
     totalsByRole: AttendanceByRoleDto;
+
+    @ApiProperty({ description: 'Total present attendees not registered in the system.' })
+    externalPresentCount: number;
+
+    @ApiProperty({ description: 'Registered present + external present.' })
+    overallPresentCount: number;
 
     @ApiProperty({ type: [CountByKeyDto] })
     byTown: CountByKeyDto[];

@@ -1,5 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsEnum, IsMongoId, IsOptional, ValidateNested } from 'class-validator';
+import {
+    IsArray,
+    IsBoolean,
+    IsEnum,
+    IsMongoId,
+    IsString,
+    MinLength,
+    ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ClassificationLabel } from '../../common/enums/attendance.enum';
 
@@ -11,11 +19,21 @@ export class AttendanceEntryRequestDto {
     @ApiProperty()
     @IsBoolean()
     present: boolean;
+}
 
-    @ApiProperty({ enum: ClassificationLabel, required: false })
+export class ExternalAttendanceEntryRequestDto {
+    @ApiProperty({ enum: ClassificationLabel })
     @IsEnum(ClassificationLabel)
-    @IsOptional()
-    classificationLabel?: ClassificationLabel;
+    classificationLabel: ClassificationLabel;
+
+    @ApiProperty()
+    @IsString()
+    externalId: string;
+
+    @ApiProperty()
+    @IsString()
+    @MinLength(2)
+    fullName: string;
 }
 
 export class UpsertAttendanceDto {
@@ -24,4 +42,10 @@ export class UpsertAttendanceDto {
     @ValidateNested({ each: true })
     @Type(() => AttendanceEntryRequestDto)
     entries: AttendanceEntryRequestDto[];
+
+    @ApiProperty({ type: [ExternalAttendanceEntryRequestDto], required: false })
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => ExternalAttendanceEntryRequestDto)
+    externalEntries?: ExternalAttendanceEntryRequestDto[];
 }

@@ -22,6 +22,20 @@ export class AttendanceEntryResponseDto {
     classificationLabel?: ClassificationLabel;
 }
 
+export class ExternalAttendanceEntryResponseDto {
+    @ApiProperty()
+    externalId: string;
+
+    @ApiProperty()
+    fullName: string;
+
+    @ApiProperty({ enum: ClassificationLabel })
+    classificationLabel: ClassificationLabel;
+
+    @ApiPropertyOptional({ enum: Town })
+    scopeTown?: Town;
+}
+
 export class AttendanceResponseDto {
     @ApiPropertyOptional()
     id?: string;
@@ -37,6 +51,9 @@ export class AttendanceResponseDto {
 
     @ApiProperty({ type: [AttendanceEntryResponseDto] })
     entries: AttendanceEntryResponseDto[];
+
+    @ApiPropertyOptional({ type: [ExternalAttendanceEntryResponseDto] })
+    externalEntries?: ExternalAttendanceEntryResponseDto[];
 
     @ApiPropertyOptional()
     createdAt?: Date;

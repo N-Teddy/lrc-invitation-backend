@@ -202,9 +202,73 @@ export class ReportingService {
 
         const attendance = await this.attendanceModel
             .findOne({ activityId: new Types.ObjectId(activityId) })
-            .select({ takenAt: 1 })
+            .select({ takenAt: 1, externalEntries: 1 })
             .lean()
             .exec();
+
+        const rawExternalEntries = (attendance as any)?.externalEntries ?? [];
+        const rawExternalCounts = (attendance as any)?.externalCounts ?? [];
+        const scopedExternalEntries = scope?.originTown
+            ? rawExternalEntries.filter(
+                  (x: any) =>
+                      ((x.scopeTown as Town | undefined) ?? (activity.town as Town)) ===
+                      scope.originTown,
+              )
+            : rawExternalEntries;
+        const scopedExternalCounts = scope?.originTown
+            ? rawExternalCounts.filter(
+                  (x: any) =>
+                      ((x.scopeTown as Town | undefined) ?? (activity.town as Town)) ===
+                      scope.originTown,
+              )
+            : rawExternalCounts;
+
+        const externalPresentCount =
+            scopedExternalEntries.length +
+            scopedExternalCounts.reduce((sum: number, x: any) => sum + (Number(x?.count) || 0), 0);
+
+        const classificationMap = new Map<string, number>();
+        for (const row of out.byClassification ?? []) {
+            classificationMap.set(
+                String(row._id),
+                (classificationMap.get(String(row._id)) ?? 0) + row.count,
+            );
+        }
+        for (const x of scopedExternalEntries) {
+            const key = String(x.classificationLabel ?? 'unclassified');
+            classificationMap.set(key, (classificationMap.get(key) ?? 0) + 1);
+        }
+        for (const x of scopedExternalCounts) {
+            const key = String(x.classificationLabel ?? 'unclassified');
+            const count = Number(x?.count) || 0;
+            if (!count) continue;
+            classificationMap.set(key, (classificationMap.get(key) ?? 0) + count);
+        }
+
+        const originTownMap = new Map<string, number>();
+        for (const row of out.byOriginTown ?? []) {
+            originTownMap.set(
+                String(row._id),
+                (originTownMap.get(String(row._id)) ?? 0) + row.count,
+            );
+        }
+        for (const x of scopedExternalEntries) {
+            const townKey = String(
+                (x.scopeTown as Town | undefined) ?? (activity.town as Town) ?? 'unknown',
+            );
+            originTownMap.set(townKey, (originTownMap.get(townKey) ?? 0) + 1);
+        }
+        for (const x of scopedExternalCounts) {
+            const townKey = String(
+                (x.scopeTown as Town | undefined) ?? (activity.town as Town) ?? 'unknown',
+            );
+            const count = Number(x?.count) || 0;
+            if (!count) continue;
+            originTownMap.set(townKey, (originTownMap.get(townKey) ?? 0) + count);
+        }
+
+        const overallPresentCount =
+            (childrenTotals.present ?? 0) + (monitorTotals.present ?? 0) + externalPresentCount;
 
         return {
             activityId,
@@ -217,14 +281,13 @@ export class ReportingService {
                 children: childrenTotals,
                 monitors: monitorTotals,
             },
+            externalPresentCount,
+            overallPresentCount,
             byOriginTown: normalizeCounts(
-                (out.byOriginTown ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),
+                [...originTownMap.entries()].map(([key, count]) => ({ key, count })),
             ),
             byClassificationLabel: normalizeCounts(
-                (out.byClassification ?? []).map((x: any) => ({
-                    key: String(x._id),
-                    count: x.count,
-                })),
+                [...classificationMap.entries()].map(([key, count]) => ({ key, count })),
             ),
             byChildGroup: normalizeCounts(
                 (out.byChildGroup ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),
@@ -427,6 +490,8 @@ export class ReportingService {
                     children: toTotals(0, 0),
                     monitors: toTotals(0, 0),
                 },
+                externalPresentCount: 0,
+                overallPresentCount: 0,
                 byTown: [],
                 byActivityType: [],
                 byClassificationLabel: [],
@@ -533,23 +598,91 @@ export class ReportingService {
             );
         }
 
+        const yearlyAttendanceDocs = await this.attendanceModel
+            .find({ activityId: { $in: activityIds } })
+            .select({ activityId: 1, externalEntries: 1 })
+            .lean()
+            .exec();
+
+        const externalByClassification = new Map<string, number>();
+        const externalByTown = new Map<string, number>();
+        let externalPresentCount = 0;
+
+        for (const doc of yearlyAttendanceDocs) {
+            const meta = activityById.get(String((doc as any).activityId));
+            if (!meta) continue;
+
+            const external = (doc as any).externalEntries ?? [];
+            const legacyCounts = (doc as any).externalCounts ?? [];
+            for (const x of external) {
+                const townKey = String((x.scopeTown as Town | undefined) ?? meta.town ?? 'unknown');
+                if (scope?.originTown && (townKey as any) !== scope.originTown) continue;
+
+                externalPresentCount += 1;
+                externalByTown.set(townKey, (externalByTown.get(townKey) ?? 0) + 1);
+
+                const labelKey = String(x.classificationLabel ?? 'unclassified');
+                externalByClassification.set(
+                    labelKey,
+                    (externalByClassification.get(labelKey) ?? 0) + 1,
+                );
+            }
+
+            for (const x of legacyCounts) {
+                const count = Number(x?.count) || 0;
+                if (!count) continue;
+                const townKey = String((x.scopeTown as Town | undefined) ?? meta.town ?? 'unknown');
+                if (scope?.originTown && (townKey as any) !== scope.originTown) continue;
+
+                externalPresentCount += count;
+                externalByTown.set(townKey, (externalByTown.get(townKey) ?? 0) + count);
+
+                const labelKey = String(x.classificationLabel ?? 'unclassified');
+                externalByClassification.set(
+                    labelKey,
+                    (externalByClassification.get(labelKey) ?? 0) + count,
+                );
+            }
+        }
+
+        const childrenTotals = toTotals(childrenRow?.present ?? 0, childrenRow?.total ?? 0);
+        const monitorTotals = toTotals(monitorRow?.present ?? 0, monitorRow?.total ?? 0);
+        const overallPresentCount =
+            (childrenTotals.present ?? 0) + (monitorTotals.present ?? 0) + externalPresentCount;
+
+        const classificationMap = new Map<string, number>();
+        for (const row of out.byClassification ?? []) {
+            classificationMap.set(
+                String(row._id),
+                (classificationMap.get(String(row._id)) ?? 0) + row.count,
+            );
+        }
+        for (const [key, count] of externalByClassification.entries()) {
+            classificationMap.set(key, (classificationMap.get(key) ?? 0) + count);
+        }
+
+        const townMap = new Map<string, number>();
+        for (const row of out.byTown ?? []) {
+            townMap.set(String(row._id), (townMap.get(String(row._id)) ?? 0) + row.count);
+        }
+        for (const [key, count] of externalByTown.entries()) {
+            townMap.set(key, (townMap.get(key) ?? 0) + count);
+        }
+
         return {
             year,
             totalsByRole: {
-                children: toTotals(childrenRow?.present ?? 0, childrenRow?.total ?? 0),
-                monitors: toTotals(monitorRow?.present ?? 0, monitorRow?.total ?? 0),
+                children: childrenTotals,
+                monitors: monitorTotals,
             },
-            byTown: normalizeCounts(
-                (out.byTown ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),
-            ),
+            externalPresentCount,
+            overallPresentCount,
+            byTown: normalizeCounts([...townMap.entries()].map(([key, count]) => ({ key, count }))),
             byActivityType: normalizeCounts(
                 [...byActivityTypeCounts.entries()].map(([key, count]) => ({ key, count })),
             ),
             byClassificationLabel: normalizeCounts(
-                (out.byClassification ?? []).map((x: any) => ({
-                    key: String(x._id),
-                    count: x.count,
-                })),
+                [...classificationMap.entries()].map(([key, count]) => ({ key, count })),
             ),
             byChildGroup: normalizeCounts(
                 (out.byChildGroup ?? []).map((x: any) => ({ key: String(x._id), count: x.count })),

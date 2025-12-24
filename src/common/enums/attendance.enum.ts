@@ -1,4 +1,5 @@
 export enum ClassificationLabel {
+    PreA = 'PRE_A',
     A = 'A',
     B = 'B',
     C = 'C',
@@ -6,6 +7,7 @@ export enum ClassificationLabel {
     Eleve = 'ELEVE',
     JRs = 'JRs',
     Membre = 'MEMBRE',
+    Monitor = 'MONITOR',
 }
 
 export enum AttendanceRoleAtTime {
