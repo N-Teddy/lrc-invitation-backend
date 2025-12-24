@@ -120,7 +120,7 @@ export class AuthService {
     }
 
     async exchangeMagicLink(token: string) {
-        const user = await this.usersService.findByMagicToken(token);
+        const user = await this.usersService.findByMagicTokenForAuth(token);
         if (!user || !user.magicExpiresAt || user.magicExpiresAt.getTime() < Date.now()) {
             throw new UnauthorizedException('Magic link expired or invalid');
         }

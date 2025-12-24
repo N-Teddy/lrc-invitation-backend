@@ -57,6 +57,23 @@ export class UsersService {
         return user ? this.normalizeUser(user) : null;
     }
 
+    async findByMagicTokenForAuth(token: string): Promise<Record<string, any> | null> {
+        const user = await this.userModel
+            .findOne({ magicToken: token })
+            .select({
+                _id: 1,
+                role: 1,
+                monitorLevel: 1,
+                registrationPendingApproval: 1,
+                lifecycleStatus: 1,
+                magicExpiresAt: 1,
+            })
+            .lean()
+            .exec();
+        if (!user) return null;
+        return { ...user, id: user._id ? String(user._id) : undefined };
+    }
+
     async setMagicToken(userId: string | Types.ObjectId, magicToken: string, magicExpiresAt: Date) {
         await this.userModel
             .findByIdAndUpdate(userId, { $set: { magicToken, magicExpiresAt } })
