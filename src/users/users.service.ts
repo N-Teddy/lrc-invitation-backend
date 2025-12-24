@@ -188,10 +188,23 @@ export class UsersService {
     }
 
     async remove(id: string): Promise<void> {
-        const res = await this.userModel.findByIdAndDelete(id).exec();
-        if (!res) {
-            throw new NotFoundException('User not found');
+        const existing = await this.userModel.findById(id).lean().exec();
+        if (!existing) throw new NotFoundException('User not found');
+
+        // Children are never hard-deleted; archive instead.
+        if (existing.role === UserRole.Child) {
+            await this.userModel
+                .findByIdAndUpdate(id, {
+                    $set: {
+                        lifecycleStatus: LifecycleStatus.Archived,
+                        archivedReason: 'manual_archive',
+                    },
+                })
+                .exec();
+            return;
         }
+
+        await this.userModel.findByIdAndDelete(id).exec();
     }
 
     async approveMonitorRegistration(userId: string): Promise<{

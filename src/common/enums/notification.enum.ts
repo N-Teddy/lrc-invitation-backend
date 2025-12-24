@@ -7,6 +7,7 @@ export enum NotificationContextType {
     Reminder = 'reminder',
     Payment = 'payment',
     GroupChange = 'group_change',
+    Child = 'child',
 }
 
 export enum NotificationStatus {

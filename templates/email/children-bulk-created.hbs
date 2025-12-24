@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{subject}}</title>
+</head>
+<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+  <h2 style="margin-bottom: 8px;">{{subject}}</h2>
+  <p style="margin-top: 0;">
+    Bulk child creation completed.
+  </p>
+
+  <div style="margin: 12px 0; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px;">
+    <div><strong>Town:</strong> {{town}}</div>
+    <div><strong>Created:</strong> {{totalCreated}}</div>
+  </div>
+
+  {{#if sampleNames}}
+    <p style="margin: 12px 0 6px;"><strong>Sample (first {{sampleNames.length}}):</strong></p>
+    <ul style="margin-top: 6px;">
+      {{#each sampleNames}}
+        <li>{{this}}</li>
+      {{/each}}
+    </ul>
+  {{/if}}
+
+  {{#if actionsHtml}}
+    <div style="margin: 16px 0;">
+      {{actionsHtml}}
+    </div>
+    {{#if actionsText}}
+      <p style="margin: 8px 0;">If the button does not work, copy and paste a URL into your browser:</p>
+      <pre style="white-space: pre-wrap; word-break: break-word;">{{actionsText}}</pre>
+    {{/if}}
+  {{else}}
+    <p style="margin: 16px 0;">
+      <a href="{{listUrl}}" style="background:#2563eb;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;">
+        Open children list
+      </a>
+    </p>
+    <p>If the button does not work, copy and paste this URL into your browser:</p>
+    <p style="word-break: break-all;">{{listUrl}}</p>
+  {{/if}}
+
+  <p style="margin-top:24px;">Thank you,<br/>LRC Jeunesse</p>
+</body>
+</html>
+

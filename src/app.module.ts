@@ -18,6 +18,7 @@ import { BirthdaysModule } from './birthdays/birthdays.module';
 import { ActionsModule } from './actions/actions.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { InteractionsModule } from './interactions/interactions.module';
+import { ChildrenModule } from './children/children.module';
 
 @Module({
     imports: [
@@ -44,6 +45,7 @@ import { InteractionsModule } from './interactions/interactions.module';
         PaymentsModule,
         RemindersModule,
         BirthdaysModule,
+        ChildrenModule,
         ConversationsModule,
         ActionsModule,
         InteractionsModule,
