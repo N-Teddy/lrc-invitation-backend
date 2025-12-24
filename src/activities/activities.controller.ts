@@ -10,6 +10,10 @@ import {
     UpdateActivityInvitationsDto,
 } from '../dtos/request/activity.dto';
 import { ActivityResponseDto } from '../dtos/response/activity.dto';
+import {
+    ActivityEligibleChildrenResponseDto,
+    ActivityInvitedChildrenResponseDto,
+} from '../dtos/response/activity-invitations.dto';
 import { ConferenceEligibilityResponseDto } from '../dtos/response/conference-eligibility.dto';
 import { ActivitiesService } from './activities.service';
 
@@ -78,7 +82,7 @@ export class ActivitiesController {
         return this.activitiesService.regenerateInvitations(id, currentUser);
     }
 
-    @Roles([UserRole.Monitor], [MonitorLevel.Super])
+    @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])
     @Patch(':id/invitations')
     @ApiOkResponse({ type: ActivityResponseDto })
     overrideInvitations(
@@ -87,5 +91,29 @@ export class ActivitiesController {
         @CurrentUser() currentUser: any,
     ) {
         return this.activitiesService.overrideInvitations(id, dto, currentUser);
+    }
+
+    @Roles([UserRole.Monitor])
+    @Get(':id/invitations/children')
+    @ApiOkResponse({ type: ActivityInvitedChildrenResponseDto })
+    invitedChildren(@Param('id') id: string, @CurrentUser() currentUser: any) {
+        return this.activitiesService.getInvitedChildrenDetails(id, currentUser);
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])
+    @Get(':id/invitations/eligible-children')
+    @ApiOkResponse({ type: ActivityEligibleChildrenResponseDto })
+    eligibleChildren(
+        @Param('id') id: string,
+        @Query('query') query = '',
+        @Query('limit') limit = '15',
+        @CurrentUser() currentUser: any,
+    ) {
+        return this.activitiesService.searchEligibleChildrenForInvitations(
+            id,
+            query,
+            Number(limit),
+            currentUser,
+        );
     }
 }

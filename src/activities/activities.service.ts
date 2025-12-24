@@ -165,16 +165,19 @@ export class ActivitiesService {
         currentUser: Record<string, any>,
     ) {
         const activity = await this.findOneOrFail(id);
+        await this.assertCanRead(activity, currentUser);
         this.assertCanOverrideInvitations(activity, currentUser);
 
+        const validated = await this.validateInvitationOverride(activity, dto);
+
         const update: Record<string, any> = {};
-        if (dto.invitedChildrenUserIds) {
-            update.invitedChildrenUserIds = dto.invitedChildrenUserIds.map(
+        if (validated.invitedChildrenUserIds) {
+            update.invitedChildrenUserIds = validated.invitedChildrenUserIds.map(
                 (x) => new Types.ObjectId(x),
             );
         }
-        if (dto.invitedMonitorUserIds) {
-            update.invitedMonitorUserIds = dto.invitedMonitorUserIds.map(
+        if (validated.invitedMonitorUserIds) {
+            update.invitedMonitorUserIds = validated.invitedMonitorUserIds.map(
                 (x) => new Types.ObjectId(x),
             );
         }
@@ -185,6 +188,165 @@ export class ActivitiesService {
             .exec();
         if (!updated) throw new NotFoundException('Activity not found');
         return updated;
+    }
+
+    async getInvitedChildrenDetails(activityId: string, currentUser: Record<string, any>) {
+        const activity = await this.findOneOrFail(activityId, currentUser);
+        const mapping = await this.getAgeToGroupMapping();
+        const groups = targetGroupsForTargetingCode(activity.targetingCode as TargetingCode);
+        const asOf = activity.startDate ? new Date(activity.startDate) : new Date();
+
+        const invitedIds = (activity.invitedChildrenUserIds ?? []).map((x: any) =>
+            typeof x === 'string' ? new Types.ObjectId(x) : (x as Types.ObjectId),
+        );
+
+        if (!invitedIds.length) {
+            return {
+                activityId,
+                targetGroups: groups,
+                invited: [],
+            };
+        }
+
+        const users = await this.userModel
+            .find({ _id: { $in: invitedIds }, role: UserRole.Child })
+            .select({ _id: 1, fullName: 1, dateOfBirth: 1, profileImage: 1 })
+            .lean()
+            .exec();
+
+        const profiles = await this.childProfileModel
+            .find({ userId: { $in: invitedIds } })
+            .select({ userId: 1, currentGroup: 1 })
+            .lean()
+            .exec();
+        const profileByUserId = new Map<string, Record<string, any>>();
+        for (const p of profiles) {
+            profileByUserId.set(String(p.userId), p);
+        }
+
+        const cards = users
+            .map((u) => {
+                const profile = profileByUserId.get(String(u._id));
+                const group: ChildGroup | undefined =
+                    (profile?.currentGroup as ChildGroup | undefined) ??
+                    (u.dateOfBirth
+                        ? computeGroupFromAge(
+                              computeAgeYears(new Date(u.dateOfBirth), asOf),
+                              mapping.bands,
+                          )
+                        : undefined);
+
+                return {
+                    userId: String(u._id),
+                    fullName: u.fullName as string,
+                    group,
+                    profileImageUrl: (u as any)?.profileImage?.url as string | undefined,
+                };
+            })
+            .sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+        return {
+            activityId,
+            targetGroups: groups,
+            invited: cards,
+        };
+    }
+
+    async searchEligibleChildrenForInvitations(
+        activityId: string,
+        query: string,
+        limit: number,
+        currentUser: Record<string, any>,
+    ) {
+        const activity = await this.findOneOrFail(activityId, currentUser);
+        this.assertCanOverrideInvitations(activity, currentUser);
+
+        const q = (query ?? '').trim();
+        if (q.length < 2) {
+            return {
+                activityId,
+                query: q,
+                targetGroups: targetGroupsForTargetingCode(activity.targetingCode as TargetingCode),
+                results: [],
+            };
+        }
+
+        const max = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.floor(limit))) : 15;
+        const mapping = await this.getAgeToGroupMapping();
+        const groups = targetGroupsForTargetingCode(activity.targetingCode as TargetingCode);
+        const asOf = activity.startDate ? new Date(activity.startDate) : new Date();
+        const allowUnknownGroup = (activity.targetingCode as TargetingCode) === TargetingCode.ABCD;
+
+        const alreadyInvited = new Set(
+            (activity.invitedChildrenUserIds ?? []).map((x: any) => String(x)),
+        );
+
+        const filter: Record<string, any> = {
+            role: UserRole.Child,
+            lifecycleStatus: LifecycleStatus.Active,
+            fullName: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' },
+        };
+
+        if (activity.type !== ActivityType.Conference) {
+            filter.originTown = activity.town;
+        }
+
+        const candidates = await this.userModel
+            .find(filter)
+            .select({ _id: 1, fullName: 1, dateOfBirth: 1, profileImage: 1 })
+            .limit(max * 3)
+            .lean()
+            .exec();
+
+        if (!candidates.length) {
+            return { activityId, query: q, targetGroups: groups, results: [] };
+        }
+
+        const candidateIds = candidates.map((c) => c._id);
+        const profiles = await this.childProfileModel
+            .find({ userId: { $in: candidateIds } })
+            .select({ userId: 1, currentGroup: 1 })
+            .lean()
+            .exec();
+        const profileByUserId = new Map<string, Record<string, any>>();
+        for (const p of profiles) {
+            profileByUserId.set(String(p.userId), p);
+        }
+
+        const results: Array<{
+            userId: string;
+            fullName: string;
+            group?: ChildGroup;
+            profileImageUrl?: string;
+        }> = [];
+
+        for (const c of candidates) {
+            if (alreadyInvited.has(String(c._id))) continue;
+
+            const profile = profileByUserId.get(String(c._id));
+            const group: ChildGroup | undefined =
+                (profile?.currentGroup as ChildGroup | undefined) ??
+                (c.dateOfBirth
+                    ? computeGroupFromAge(
+                          computeAgeYears(new Date(c.dateOfBirth), asOf),
+                          mapping.bands,
+                      )
+                    : undefined);
+
+            if (!group && !allowUnknownGroup) continue;
+            if (group && !groups.includes(group)) continue;
+
+            results.push({
+                userId: String(c._id),
+                fullName: c.fullName as string,
+                group,
+                profileImageUrl: (c as any)?.profileImage?.url as string | undefined,
+            });
+
+            if (results.length >= max) break;
+        }
+
+        return { activityId, query: q, targetGroups: groups, results };
     }
 
     async getConferenceEligibility(activityId: string, currentUser: Record<string, any>) {
@@ -524,8 +686,18 @@ export class ActivitiesService {
         _activity: Record<string, any>,
         currentUser: Record<string, any>,
     ) {
-        if (currentUser?.monitorLevel !== MonitorLevel.Super) {
-            throw new ForbiddenException('Only Super Monitors can override invitations');
+        const level = currentUser?.monitorLevel as MonitorLevel | undefined;
+        if (!level) {
+            throw new ForbiddenException('Only monitors can override invitations');
+        }
+        if (level !== MonitorLevel.Super && level !== MonitorLevel.Official) {
+            throw new ForbiddenException(
+                'Only Official and Super Monitors can override invitations',
+            );
+        }
+
+        if (_activity.type === ActivityType.Conference && level !== MonitorLevel.Super) {
+            throw new ForbiddenException('Only Super Monitors can override conference invitations');
         }
     }
 
@@ -593,6 +765,115 @@ export class ActivitiesService {
 
         const invitedMonitorUserIds = await this.computeMonitorInvites(activity);
         return { invitedChildrenUserIds, invitedMonitorUserIds };
+    }
+
+    private async validateInvitationOverride(
+        activity: Record<string, any>,
+        dto: UpdateActivityInvitationsDto,
+    ): Promise<{ invitedChildrenUserIds?: string[]; invitedMonitorUserIds?: string[] }> {
+        const out: { invitedChildrenUserIds?: string[]; invitedMonitorUserIds?: string[] } = {};
+
+        if (dto.invitedChildrenUserIds) {
+            const requested = Array.from(new Set(dto.invitedChildrenUserIds.map((x) => String(x))));
+            const requestedIds = requested.map((x) => new Types.ObjectId(x));
+            const mapping = await this.getAgeToGroupMapping();
+            const groups = targetGroupsForTargetingCode(activity.targetingCode as TargetingCode);
+            const asOf = activity.startDate ? new Date(activity.startDate) : new Date();
+            const allowUnknownGroup =
+                (activity.targetingCode as TargetingCode) === TargetingCode.ABCD;
+
+            const filter: Record<string, any> = {
+                _id: { $in: requestedIds },
+                role: UserRole.Child,
+                lifecycleStatus: LifecycleStatus.Active,
+            };
+            if (activity.type !== ActivityType.Conference) {
+                filter.originTown = activity.town;
+            }
+
+            const children = await this.userModel
+                .find(filter)
+                .select({ _id: 1, dateOfBirth: 1 })
+                .lean()
+                .exec();
+            const childById = new Map(children.map((c) => [String(c._id), c]));
+
+            const profiles = await this.childProfileModel
+                .find({ userId: { $in: requestedIds } })
+                .select({ userId: 1, currentGroup: 1 })
+                .lean()
+                .exec();
+            const profileByUserId = new Map<string, Record<string, any>>();
+            for (const p of profiles) {
+                profileByUserId.set(String(p.userId), p);
+            }
+
+            const invalid: string[] = [];
+            const valid: string[] = [];
+
+            for (const id of requested) {
+                const child = childById.get(id);
+                if (!child) {
+                    invalid.push(id);
+                    continue;
+                }
+
+                const profile = profileByUserId.get(id);
+                const group: ChildGroup | undefined =
+                    (profile?.currentGroup as ChildGroup | undefined) ??
+                    (child.dateOfBirth
+                        ? computeGroupFromAge(
+                              computeAgeYears(new Date(child.dateOfBirth), asOf),
+                              mapping.bands,
+                          )
+                        : undefined);
+
+                if (!group && !allowUnknownGroup) {
+                    invalid.push(id);
+                    continue;
+                }
+                if (group && !groups.includes(group)) {
+                    invalid.push(id);
+                    continue;
+                }
+
+                valid.push(id);
+            }
+
+            if (invalid.length) {
+                throw new BadRequestException(
+                    `Some invited children are not eligible for this activity: ${invalid.join(', ')}`,
+                );
+            }
+
+            out.invitedChildrenUserIds = valid;
+        }
+
+        if (dto.invitedMonitorUserIds) {
+            const requested = Array.from(new Set(dto.invitedMonitorUserIds.map((x) => String(x))));
+            const requestedIds = requested.map((x) => new Types.ObjectId(x));
+            const filter: Record<string, any> = {
+                _id: { $in: requestedIds },
+                role: UserRole.Monitor,
+                lifecycleStatus: LifecycleStatus.Active,
+            };
+            if (activity.type !== ActivityType.Conference) {
+                filter.originTown = activity.town;
+            }
+
+            const monitors = await this.userModel.find(filter).select({ _id: 1 }).lean().exec();
+            const found = new Set(monitors.map((m) => String(m._id)));
+            const invalid = requested.filter((id) => !found.has(id));
+            if (invalid.length) {
+                throw new BadRequestException(
+                    `Some invited monitors are not eligible for this activity: ${invalid.join(', ')}`,
+                );
+            }
+
+            out.invitedMonitorUserIds = requested;
+        }
+
+        return out;
     }
 
     private async computeMonitorInvites(activity: Record<string, any>) {
