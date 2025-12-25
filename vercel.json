@@ -1,15 +1,15 @@
 {
     "version": 2,
     "builds": [
-        {
-            "src": "src/main.js",
-            "use": "@vercel/node"
-        }
+    {
+        "src": "dist/main.js",
+        "use": "@vercel/node"
+    }
     ],
     "routes": [
         {
             "src": "/api/(.*)",
-            "dest": "src/main.js",
+            "dest": "dist/main.js",
             "methods": [
                 "GET",
                 "POST",
@@ -22,7 +22,7 @@
         },
         {
             "src": "/(.*)",
-            "dest": "src/main.js",
+            "dest": "dist/main.js",
             "methods": [
                 "GET",
                 "POST",
