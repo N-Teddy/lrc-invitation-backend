@@ -39,9 +39,9 @@ async function bootstrap() {
         corsOriginsRaw === '*'
             ? '*'
             : corsOriginsRaw
-                .split(',')
-                .map((x) => x.trim())
-                .filter(Boolean);
+                  .split(',')
+                  .map((x) => x.trim())
+                  .filter(Boolean);
 
     app.enableCors({
         origin: corsOrigins === '*' ? (corsCredentials ? true : '*') : corsOrigins,
