@@ -3,8 +3,8 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import * as compression from 'compression';
-import * as express from 'express';
 import { join } from 'path';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -13,7 +13,7 @@ import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
 import { ClassSerializerInterceptor } from '@nestjs/common';
 
 async function bootstrap() {
-    const app = await NestFactory.create(AppModule, {
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
         bufferLogs: true,
     });
 
@@ -32,7 +32,7 @@ async function bootstrap() {
             threshold: 0,
         }),
     );
-    app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
+    app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
     const corsOriginsRaw = process.env.CORS_ORIGIN?.trim() ?? '*';
     const corsCredentials = process.env.CORS_CREDENTIALS === 'true';
     const corsOrigins =
@@ -113,8 +113,8 @@ async function bootstrap() {
 
     app.enableShutdownHooks();
 
-    const port = process.env.PORT ?? 3000;
-    await app.listen(port);
+    const port = Number(process.env.PORT ?? process.env.APP_PORT ?? 3000);
+    await app.listen(port, '0.0.0.0');
     Logger.log(`🚀 Application is running on: http://localhost:${port}/${globalPrefix}`);
     Logger.log(`📚 Swagger documentation: http://localhost:${port}/${docsPath}`);
 }
