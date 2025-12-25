@@ -5,6 +5,10 @@ import { ConfigService } from '@nestjs/config';
 export class AppConfigService {
     constructor(private readonly configService: ConfigService) {}
 
+    get nodeEnv(): string {
+        return this.configService.get<string>('NODE_ENV', 'development');
+    }
+
     // Expose raw ConfigService only when absolutely needed
     get raw(): ConfigService {
         return this.configService;
@@ -47,7 +51,7 @@ export class AppConfigService {
     }
 
     get storageProvider(): 'local' | 'cloudinary' {
-        const env = this.configService.get<string>('NODE_ENV', 'development');
+        const env = this.nodeEnv;
         const configured = this.configService.get<string>('STORAGE_PROVIDER');
         if (configured === 'local' || configured === 'cloudinary') {
             return configured;
@@ -109,6 +113,21 @@ export class AppConfigService {
 
     get mailPort(): number {
         return Number(this.configService.get<number>('MAIL_PORT', 1025));
+    }
+
+    get mailSecure(): boolean {
+        const configured = this.configService.get<string>('MAIL_SECURE');
+        if (configured === 'true') return true;
+        if (configured === 'false') return false;
+        return this.mailPort === 465;
+    }
+
+    get mailRequireTls(): boolean {
+        return this.configService.get<string>('MAIL_REQUIRE_TLS', 'false') === 'true';
+    }
+
+    get mailTlsRejectUnauthorized(): boolean {
+        return this.configService.get<string>('MAIL_TLS_REJECT_UNAUTHORIZED', 'true') !== 'false';
     }
 
     get mailUser(): string | undefined {
