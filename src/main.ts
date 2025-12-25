@@ -114,8 +114,8 @@ async function bootstrap() {
     app.enableShutdownHooks();
 
     const port = process.env.PORT ?? 3000;
-    await app.listen(port, '0.0.0.0');
+    await app.listen(port);
     Logger.log(`🚀 Application is running on: http://localhost:${port}/${globalPrefix}`);
     Logger.log(`📚 Swagger documentation: http://localhost:${port}/${docsPath}`);
 }
-bootstrap();
+void bootstrap();
