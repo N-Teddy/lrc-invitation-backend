@@ -54,3 +54,10 @@ export class CreateUserDto {
 }
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {}
+
+export class UpdateMyPreferencesDto {
+    @ApiProperty({ required: false, description: 'Preferred language code (e.g., en, fr)' })
+    @IsString()
+    @IsOptional()
+    preferredLanguage?: string;
+}

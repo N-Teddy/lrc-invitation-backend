@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../common/decorators/roles.decorator';
 import { MonitorLevel, UserRole } from '../common/enums/user.enum';
-import { CreateUserDto, UpdateUserDto } from '../dtos/request/user.dto';
+import { CreateUserDto, UpdateMyPreferencesDto, UpdateUserDto } from '../dtos/request/user.dto';
 import { UsersService } from './users.service';
 import { ApiBody, ApiConsumes, ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
 import { UserResponseDto } from '../dtos/response/user.dto';
@@ -57,6 +57,13 @@ export class UsersController {
     @ApiOkResponse({ type: UserResponseDto })
     update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
         return this.usersService.update(id, dto);
+    }
+
+    @Roles([UserRole.Monitor])
+    @Patch('me')
+    @ApiOkResponse({ type: UserResponseDto })
+    updateMe(@Body() dto: UpdateMyPreferencesDto, @CurrentUser() currentUser: any) {
+        return this.usersService.updateMyPreferences(currentUser, dto);
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Super])

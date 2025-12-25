@@ -187,6 +187,37 @@ export class UsersService {
         return this.normalizeUser(user);
     }
 
+    async updateMyPreferences(
+        currentUser: Record<string, any>,
+        dto: { preferredLanguage?: string },
+    ): Promise<Record<string, any>> {
+        const id = String(currentUser?.id ?? currentUser?._id);
+        if (!id) throw new ForbiddenException('Missing user');
+
+        const update: Record<string, any> = {};
+        if (dto.preferredLanguage !== undefined) {
+            update.preferredLanguage = dto.preferredLanguage.trim();
+        }
+
+        const user = await this.userModel
+            .findByIdAndUpdate(id, { $set: update }, { new: true })
+            .lean()
+            .exec();
+        if (!user) throw new NotFoundException('User not found');
+
+        if (user.role === UserRole.Monitor && dto.preferredLanguage !== undefined) {
+            await this.monitorProfileModel
+                .updateOne(
+                    { userId: new Types.ObjectId(String(id)) },
+                    { $set: { preferredLanguage: update.preferredLanguage } },
+                    { upsert: true },
+                )
+                .exec();
+        }
+
+        return this.normalizeUser(user);
+    }
+
     async remove(id: string): Promise<void> {
         const existing = await this.userModel.findById(id).lean().exec();
         if (!existing) throw new NotFoundException('User not found');
