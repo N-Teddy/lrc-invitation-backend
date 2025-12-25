@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../schema/user.schema';
@@ -67,6 +72,58 @@ export class UsersService {
     async findAll(): Promise<Record<string, any>[]> {
         const users = await this.userModel.find().lean().exec();
         return users.map((user) => this.normalizeUser(user));
+    }
+
+    async listUsers(params: {
+        q?: string;
+        role?: UserRole;
+        status?: LifecycleStatus;
+        pendingApproval?: boolean;
+        town?: Town;
+        page: number;
+        limit: number;
+    }): Promise<{ items: Record<string, any>[]; page: number; limit: number; total: number }> {
+        const page = Number.isFinite(params.page) && params.page > 0 ? Math.floor(params.page) : 1;
+        const limitRaw =
+            Number.isFinite(params.limit) && params.limit > 0 ? Math.floor(params.limit) : 20;
+        const limit = Math.min(Math.max(limitRaw, 1), 100);
+        const skip = (page - 1) * limit;
+
+        const filter: Record<string, any> = {};
+        if (params.role) filter.role = params.role;
+        if (params.status) filter.lifecycleStatus = params.status;
+        if (params.pendingApproval === true) {
+            filter.registrationPendingApproval = true;
+        } else if (params.pendingApproval === false) {
+            filter.registrationPendingApproval = { $ne: true };
+        }
+        if (params.town) filter.originTown = params.town;
+
+        const q = params.q?.trim();
+        if (q) {
+            filter.$or = [
+                { fullName: { $regex: q, $options: 'i' } },
+                { email: { $regex: q, $options: 'i' } },
+            ];
+        }
+
+        const [itemsRaw, total] = await Promise.all([
+            this.userModel
+                .find(filter)
+                .sort({ registrationPendingApproval: -1, createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean()
+                .exec(),
+            this.userModel.countDocuments(filter).exec(),
+        ]);
+
+        return {
+            items: itemsRaw.map((u) => this.normalizeUser(u)),
+            page,
+            limit,
+            total,
+        };
     }
 
     async findById(id: string): Promise<Record<string, any> | null> {
@@ -278,6 +335,38 @@ export class UsersService {
             magicToken: isPending ? magicToken : undefined,
             magicExpiresAt: isPending ? magicExpiresAt : undefined,
         };
+    }
+
+    async rejectMonitorRegistration(userId: string): Promise<Record<string, any>> {
+        const existing = await this.userModel.findById(userId).lean().exec();
+        if (!existing) throw new NotFoundException('User not found');
+        if (existing.role !== UserRole.Monitor) {
+            throw new BadRequestException('Only monitor registrations can be rejected');
+        }
+        if (!existing.registrationPendingApproval) {
+            throw new BadRequestException('User is not pending approval');
+        }
+
+        const updated = await this.userModel
+            .findByIdAndUpdate(
+                userId,
+                {
+                    $set: {
+                        registrationPendingApproval: false,
+                        lifecycleStatus: LifecycleStatus.Archived,
+                        archivedReason: 'registration_rejected',
+                    },
+                    $unset: {
+                        magicToken: '',
+                        magicExpiresAt: '',
+                    },
+                },
+                { new: true },
+            )
+            .lean()
+            .exec();
+        if (!updated) throw new NotFoundException('User not found');
+        return this.normalizeUser(updated);
     }
 
     async assertCanApproveMonitorRegistration(approver: Record<string, any>, targetUserId: string) {

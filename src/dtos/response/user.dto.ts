@@ -34,6 +34,11 @@ export class UserResponseDto {
         updatedAt?: Date;
     };
 
+    @ApiPropertyOptional({
+        description: 'True when a monitor account is awaiting Super Monitor approval.',
+    })
+    registrationPendingApproval?: boolean;
+
     @ApiPropertyOptional()
     lifecycleStatus?: LifecycleStatus;
 

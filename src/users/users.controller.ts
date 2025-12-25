@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../common/decorators/roles.decorator';
-import { MonitorLevel, UserRole } from '../common/enums/user.enum';
+import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { CreateUserDto, UpdateMyPreferencesDto, UpdateUserDto } from '../dtos/request/user.dto';
 import { UsersService } from './users.service';
 import { ApiBody, ApiConsumes, ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
@@ -19,6 +19,9 @@ import { NotificationService } from '../notifications/notifications.service';
 import { NotificationContextType } from '../common/enums/notification.enum';
 import { AppConfigService } from '../config/app-config.service';
 import { ApproveUserResponseDto } from '../dtos/response/user-approval.dto';
+import { UsersListResponseDto } from '../dtos/response/users-list.dto';
+import { RejectUserResponseDto } from '../dtos/response/user-rejection.dto';
+import { Town } from '../common/enums/activity.enum';
 
 @ApiBearerAuth()
 @ApiTags('users')
@@ -40,9 +43,26 @@ export class UsersController {
 
     @Roles([UserRole.Monitor], [MonitorLevel.Super])
     @Get()
-    @ApiOkResponse({ type: [UserResponseDto] })
-    findAll() {
-        return this.usersService.findAll();
+    @ApiOkResponse({ type: UsersListResponseDto })
+    findAll(
+        @Query('q') q?: string,
+        @Query('role') role?: UserRole,
+        @Query('status') status?: LifecycleStatus,
+        @Query('pendingApproval') pendingApproval?: 'true' | 'false',
+        @Query('town') town?: Town,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.usersService.listUsers({
+            q,
+            role,
+            status,
+            pendingApproval:
+                pendingApproval === 'true' ? true : pendingApproval === 'false' ? false : undefined,
+            town,
+            page: page ? Number(page) : 1,
+            limit: limit ? Number(limit) : 20,
+        });
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Super])
@@ -96,6 +116,15 @@ export class UsersController {
         }
 
         return { approved: true, magicLinkSent, user };
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Super])
+    @Post(':id/reject')
+    @ApiOkResponse({ type: RejectUserResponseDto })
+    async reject(@Param('id') id: string, @CurrentUser() currentUser: any) {
+        await this.usersService.assertCanApproveMonitorRegistration(currentUser, id);
+        const user = await this.usersService.rejectMonitorRegistration(id);
+        return { rejected: true, user };
     }
 
     @Roles([UserRole.Monitor])
