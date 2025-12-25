@@ -17,6 +17,9 @@ export class PaymentResponseDto {
     @ApiProperty()
     paidAt: Date;
 
+    @ApiProperty({ enum: Town })
+    town: Town;
+
     @ApiPropertyOptional()
     recordedByUserId?: string;
 
@@ -40,7 +43,19 @@ export class PaymentYearSummaryDto {
     @ApiProperty()
     totalPaidFcfa: number;
 
-    @ApiProperty({ description: 'expectedFcfa - totalPaidFcfa (negative means overpaid)' })
+    @ApiProperty()
+    carryFromPreviousYearFcfa: number;
+
+    @ApiProperty()
+    effectivePaidFcfa: number;
+
+    @ApiProperty()
+    carriedForwardFcfa: number;
+
+    @ApiProperty({
+        description:
+            'expectedFcfa - effectivePaidFcfa (includes previous-year carry). Negative means credits exist for the next year.',
+    })
     balanceFcfa: number;
 }
 

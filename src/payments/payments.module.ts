@@ -4,6 +4,8 @@ import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { Payment, PaymentSchema } from '../schema/payment.schema';
 import { User, UserSchema } from '../schema/user.schema';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { AppConfigService } from '../config/app-config.service';
 
 @Module({
     imports: [
@@ -11,9 +13,10 @@ import { User, UserSchema } from '../schema/user.schema';
             { name: Payment.name, schema: PaymentSchema },
             { name: User.name, schema: UserSchema },
         ]),
+        NotificationsModule,
     ],
     controllers: [PaymentsController],
-    providers: [PaymentsService],
+    providers: [PaymentsService, AppConfigService],
     exports: [PaymentsService],
 })
 export class PaymentsModule {}

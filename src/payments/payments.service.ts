@@ -6,22 +6,34 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Payment, PaymentDocument } from '../schema/payment.schema';
-import { User, UserDocument } from '../schema/user.schema';
+import { NotificationContextType } from '../common/enums/notification.enum';
+import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
+import { Town } from '../common/enums/activity.enum';
 import { YEARLY_CONTRIBUTION_FCFA } from '../common/constants/payments.constants';
 import { CreatePaymentDto, PaymentsQueryDto, UpdatePaymentDto } from '../dtos/request/payment.dto';
-import { MonitorLevel, UserRole } from '../common/enums/user.enum';
-import { Town } from '../common/enums/activity.enum';
+import { Payment, PaymentDocument } from '../schema/payment.schema';
+import { User, UserDocument } from '../schema/user.schema';
+import { NotificationService } from '../notifications/notifications.service';
+import { AppConfigService } from '../config/app-config.service';
+
+interface MonitorYearState {
+    totalPaid: number;
+    carryFromPrevious: number;
+    effectivePaid: number;
+    carryForward: number;
+}
 
 @Injectable()
 export class PaymentsService {
     constructor(
         @InjectModel(Payment.name) private readonly paymentModel: Model<PaymentDocument>,
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+        private readonly notificationService: NotificationService,
+        private readonly config: AppConfigService,
     ) {}
 
     async create(dto: CreatePaymentDto, currentUser: Record<string, any>) {
-        this.assertSuper(currentUser);
+        this.ensureMonitor(currentUser, dto.monitorUserId);
 
         const monitor = await this.userModel.findById(dto.monitorUserId).lean().exec();
         if (!monitor) throw new NotFoundException('Monitor not found');
@@ -36,6 +48,7 @@ export class PaymentsService {
         const created = await new this.paymentModel({
             monitorUserId: new Types.ObjectId(dto.monitorUserId),
             year: dto.year,
+            town: (monitor.originTown as Town) ?? Town.Yaounde,
             amountFcfa: dto.amountFcfa,
             paidAt,
             recordedByUserId: recordedByUserId
@@ -43,6 +56,7 @@ export class PaymentsService {
                 : undefined,
         }).save();
 
+        await this.notifyTownSuperMonitors(monitor, created, currentUser);
         return created.toObject();
     }
 
@@ -52,6 +66,7 @@ export class PaymentsService {
         const filter: Record<string, any> = {};
         if (query.monitorUserId) filter.monitorUserId = new Types.ObjectId(query.monitorUserId);
         if (query.year) filter.year = query.year;
+        if (query.town) filter.town = query.town;
 
         return this.paymentModel.find(filter).sort({ paidAt: -1 }).lean().exec();
     }
@@ -93,30 +108,18 @@ export class PaymentsService {
         if (!user) throw new NotFoundException('Monitor not found');
         if (user.role !== UserRole.Monitor) throw new BadRequestException('User is not a monitor');
 
-        const agg = await this.paymentModel
-            .aggregate([
-                {
-                    $match: {
-                        monitorUserId: new Types.ObjectId(monitorUserId),
-                        year,
-                    },
-                },
-                {
-                    $group: {
-                        _id: null,
-                        totalPaidFcfa: { $sum: '$amountFcfa' },
-                    },
-                },
-            ])
-            .exec();
+        const totals = await this.aggregateMonitorTotals(monitorUserId, year);
+        const state = this.computeYearState(year, totals);
 
-        const totalPaidFcfa = agg?.[0]?.totalPaidFcfa ?? 0;
         return {
             monitorUserId,
             year,
             expectedFcfa: YEARLY_CONTRIBUTION_FCFA,
-            totalPaidFcfa,
-            balanceFcfa: YEARLY_CONTRIBUTION_FCFA - totalPaidFcfa,
+            totalPaidFcfa: state.totalPaid,
+            carryFromPreviousYearFcfa: state.carryFromPrevious,
+            effectivePaidFcfa: state.effectivePaid,
+            carriedForwardFcfa: state.carryForward,
+            balanceFcfa: YEARLY_CONTRIBUTION_FCFA - state.effectivePaid,
         };
     }
 
@@ -129,20 +132,10 @@ export class PaymentsService {
             .lean()
             .exec();
 
-        const totals = await this.paymentModel
-            .aggregate([
-                { $match: { year } },
-                { $group: { _id: '$monitorUserId', totalPaidFcfa: { $sum: '$amountFcfa' } } },
-            ])
-            .exec();
-
-        const totalByMonitorId = new Map<string, number>();
-        for (const row of totals) {
-            totalByMonitorId.set(String(row._id), row.totalPaidFcfa ?? 0);
-        }
+        const totalsByMonitor = await this.aggregateTotalsByMonitor(year);
 
         const byTownMap = new Map<Town, any>();
-        let totalPaidFcfa = 0;
+        let totalEffectivePaid = 0;
         let unpaidCount = 0;
         let underpaidCount = 0;
         let exactCount = 0;
@@ -150,8 +143,10 @@ export class PaymentsService {
 
         for (const monitor of monitors) {
             const monitorId = String(monitor._id);
-            const paid = totalByMonitorId.get(monitorId) ?? 0;
-            totalPaidFcfa += paid;
+            const map = totalsByMonitor.get(monitorId);
+            const state = this.computeYearState(year, map ?? new Map());
+            const effective = state.effectivePaid;
+            totalEffectivePaid += effective;
 
             const town = (monitor.originTown as Town | undefined) ?? Town.Yaounde;
             if (!byTownMap.has(town)) {
@@ -167,15 +162,15 @@ export class PaymentsService {
             }
             const t = byTownMap.get(town);
             t.monitorsCount += 1;
-            t.totalPaidFcfa += paid;
+            t.totalPaidFcfa += effective;
 
-            if (paid <= 0) {
+            if (effective <= 0) {
                 unpaidCount += 1;
                 t.unpaidCount += 1;
-            } else if (paid < YEARLY_CONTRIBUTION_FCFA) {
+            } else if (effective < YEARLY_CONTRIBUTION_FCFA) {
                 underpaidCount += 1;
                 t.underpaidCount += 1;
-            } else if (paid === YEARLY_CONTRIBUTION_FCFA) {
+            } else if (effective === YEARLY_CONTRIBUTION_FCFA) {
                 exactCount += 1;
                 t.exactCount += 1;
             } else {
@@ -192,8 +187,8 @@ export class PaymentsService {
             expectedPerMonitorFcfa: YEARLY_CONTRIBUTION_FCFA,
             monitorsCount,
             expectedTotalFcfa,
-            totalPaidFcfa,
-            balanceTotalFcfa: expectedTotalFcfa - totalPaidFcfa,
+            totalPaidFcfa: totalEffectivePaid,
+            balanceTotalFcfa: expectedTotalFcfa - totalEffectivePaid,
             unpaidCount,
             underpaidCount,
             exactCount,
@@ -214,6 +209,7 @@ export class PaymentsService {
             if (monitor.role !== UserRole.Monitor)
                 throw new BadRequestException('User is not a monitor');
             update.monitorUserId = new Types.ObjectId(dto.monitorUserId);
+            update.town = (monitor.originTown as Town) ?? Town.Yaounde;
         }
         if (dto.year !== undefined) update.year = dto.year;
         if (dto.amountFcfa !== undefined) update.amountFcfa = dto.amountFcfa;
@@ -246,5 +242,148 @@ export class PaymentsService {
         if (!this.isSuper(user)) {
             throw new ForbiddenException('Super Monitor only');
         }
+    }
+
+    private ensureMonitor(currentUser: Record<string, any>, monitorUserId: string) {
+        if (currentUser?.role !== UserRole.Monitor) {
+            throw new ForbiddenException('Only monitors can record contributions');
+        }
+
+        if (this.isSuper(currentUser)) return;
+
+        const currentUserId = String(currentUser?.id ?? currentUser?._id);
+        if (currentUserId !== monitorUserId) {
+            throw new ForbiddenException('Monitors may only log their own contributions');
+        }
+    }
+
+    private async aggregateMonitorTotals(monitorUserId: string, uptoYear: number) {
+        const rows = await this.paymentModel
+            .aggregate([
+                {
+                    $match: {
+                        monitorUserId: new Types.ObjectId(monitorUserId),
+                        year: { $lte: uptoYear },
+                    },
+                },
+                {
+                    $group: {
+                        _id: '$year',
+                        totalPaidFcfa: { $sum: '$amountFcfa' },
+                    },
+                },
+            ])
+            .exec();
+        const totals = new Map<number, number>();
+        for (const row of rows) {
+            totals.set(Number(row._id), row.totalPaidFcfa ?? 0);
+        }
+        return totals;
+    }
+
+    private computeYearState(year: number, totals: Map<number, number>) {
+        const candidateYears = [...totals.keys(), year];
+        const startYear = candidateYears.length ? Math.min(...candidateYears) : year;
+        let carryFromPrevious = 0;
+        let state: MonitorYearState = {
+            totalPaid: totals.get(year) ?? 0,
+            carryFromPrevious: 0,
+            effectivePaid: 0,
+            carryForward: 0,
+        };
+        for (let y = startYear; y <= year; y++) {
+            const total = totals.get(y) ?? 0;
+            const prevCarry = carryFromPrevious;
+            const effective = total + prevCarry;
+            const nextCarry = Math.max(effective - YEARLY_CONTRIBUTION_FCFA, 0);
+            if (y === year) {
+                state = {
+                    totalPaid: total,
+                    carryFromPrevious: prevCarry,
+                    effectivePaid: effective,
+                    carryForward: nextCarry,
+                };
+            }
+            carryFromPrevious = nextCarry;
+        }
+        return state;
+    }
+
+    private async aggregateTotalsByMonitor(year: number) {
+        const rows = await this.paymentModel
+            .aggregate([
+                {
+                    $match: {
+                        year: { $lte: year },
+                    },
+                },
+                {
+                    $group: {
+                        _id: { monitorUserId: '$monitorUserId', year: '$year' },
+                        totalPaidFcfa: { $sum: '$amountFcfa' },
+                    },
+                },
+            ])
+            .exec();
+
+        const map = new Map<string, Map<number, number>>();
+        for (const row of rows) {
+            const monitorId = String(row._id.monitorUserId);
+            const totals = map.get(monitorId) ?? new Map<number, number>();
+            totals.set(Number(row._id.year), row.totalPaidFcfa ?? 0);
+            map.set(monitorId, totals);
+        }
+        return map;
+    }
+
+    private async notifyTownSuperMonitors(
+        monitor: User,
+        payment: PaymentDocument,
+        currentUser: Record<string, any>,
+    ) {
+        const town = (monitor.originTown as Town) ?? Town.Yaounde;
+        const supers = await this.userModel
+            .find({
+                role: UserRole.Monitor,
+                monitorLevel: MonitorLevel.Super,
+                lifecycleStatus: LifecycleStatus.Active,
+                originTown: town,
+            })
+            .lean()
+            .exec();
+
+        if (!supers.length) return;
+
+        const recordedByName = currentUser?.fullName ?? currentUser?.name ?? 'System';
+        const primaryChannel = this.config.notificationProvider;
+        await Promise.all(
+            supers.map(async (superMonitor) => {
+                const to =
+                    primaryChannel === 'whatsapp'
+                        ? superMonitor.whatsApp?.phoneE164
+                        : superMonitor.email;
+                if (!to) {
+                    return;
+                }
+
+                await this.notificationService.send({
+                    userId: String(superMonitor._id),
+                    to,
+                    contextType: NotificationContextType.Payment,
+                    contextId: String(payment._id),
+                    subject: 'New contribution recorded',
+                    message: `${monitor.fullName} recorded ${payment.amountFcfa} FCFA for ${payment.year}.`,
+                    templateName: 'payment-recorded',
+                    templateData: {
+                        monitorName: monitor.fullName,
+                        amountFcfa: payment.amountFcfa,
+                        year: payment.year,
+                        town,
+                        paidAt: payment.paidAt.toISOString(),
+                        recordedBy: recordedByName,
+                    },
+                });
+            }),
+        );
     }
 }

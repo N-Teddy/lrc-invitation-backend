@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import { Town } from '../common/enums/activity.enum';
 
 export type PaymentDocument = HydratedDocument<Payment>;
 
@@ -17,6 +18,9 @@ export class Payment {
     @Prop({ required: true })
     paidAt: Date;
 
+    @Prop({ type: String, enum: Town, default: Town.Yaounde })
+    town: Town;
+
     @Prop({ type: Types.ObjectId, ref: 'User' })
     recordedByUserId?: Types.ObjectId;
 }
@@ -24,3 +28,4 @@ export class Payment {
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 PaymentSchema.index({ monitorUserId: 1, year: 1 });
 PaymentSchema.index({ paidAt: 1 });
+PaymentSchema.index({ town: 1 });

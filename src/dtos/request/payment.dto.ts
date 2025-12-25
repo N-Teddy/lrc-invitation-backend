@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsMongoId, IsOptional, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsMongoId, IsOptional, Min } from 'class-validator';
+import { Town } from '../../common/enums/activity.enum';
 
 export class CreatePaymentDto {
     @ApiProperty()
@@ -34,4 +35,9 @@ export class PaymentsQueryDto {
     @Min(2000)
     @IsOptional()
     year?: number;
+
+    @ApiPropertyOptional({ enum: Town })
+    @IsEnum(Town)
+    @IsOptional()
+    town?: Town;
 }
