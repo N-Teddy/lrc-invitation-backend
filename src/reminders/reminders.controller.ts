@@ -3,7 +3,11 @@ import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nest
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MonitorLevel, UserRole } from '../common/enums/user.enum';
-import { CreateReminderDto, UpdateReminderDto } from '../dtos/request/reminder.dto';
+import {
+    CreateReminderDto,
+    RespondReminderDto,
+    UpdateReminderDto,
+} from '../dtos/request/reminder.dto';
 import { ReminderResponseDto, RemindersListResponseDto } from '../dtos/response/reminder.dto';
 import { RemindersService } from './reminders.service';
 
@@ -72,5 +76,16 @@ export class RemindersController {
     @ApiOkResponse({ type: ReminderResponseDto })
     acknowledge(@Param('id') id: string, @CurrentUser() currentUser: any) {
         return this.remindersService.acknowledge(id, currentUser);
+    }
+
+    @Roles([UserRole.Monitor])
+    @Post(':id/respond')
+    @ApiOkResponse({ type: ReminderResponseDto })
+    respond(
+        @Param('id') id: string,
+        @Body() dto: RespondReminderDto,
+        @CurrentUser() currentUser: any,
+    ) {
+        return this.remindersService.respond(id, dto, currentUser);
     }
 }

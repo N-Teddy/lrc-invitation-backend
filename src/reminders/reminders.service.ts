@@ -15,11 +15,14 @@ import { NotificationContextType } from '../common/enums/notification.enum';
 import {
     CreateReminderDto,
     ReminderScheduleDto,
+    RespondReminderDto,
     UpdateReminderDto,
 } from '../dtos/request/reminder.dto';
 import { computeNextRunAt } from '../common/utils/recurrence.util';
 import { MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { endOfDayInTimeZone } from '../common/utils/timezone.util';
+import { TownScopeService } from '../common/services/town-scope.service';
+import { InteractionEvent, InteractionEventDocument } from '../schema/interaction-event.schema';
 
 const TZ = 'Africa/Douala';
 
@@ -28,6 +31,9 @@ export class RemindersService {
     constructor(
         @InjectModel(Reminder.name) private readonly reminderModel: Model<ReminderDocument>,
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+        @InjectModel(InteractionEvent.name)
+        private readonly interactionEventModel: Model<InteractionEventDocument>,
+        private readonly townScopeService: TownScopeService,
         private readonly config: AppConfigService,
         private readonly notificationService: NotificationService,
     ) {}
@@ -35,7 +41,7 @@ export class RemindersService {
     async create(dto: CreateReminderDto, currentUser: Record<string, any>) {
         this.assertCanCreate(currentUser);
 
-        await this.assertRecipientsExist(dto.recipients);
+        await this.assertRecipientsAreTownMonitors(dto.recipients, currentUser);
 
         const schedule = this.normalizeSchedule(dto.schedule);
 
@@ -46,7 +52,8 @@ export class RemindersService {
                 ? new Types.ObjectId(String(createdByUserId))
                 : undefined,
             message: dto.message,
-            channel: dto.channel ?? Channel.WhatsApp,
+            channel:
+                this.config.notificationProvider === 'whatsapp' ? Channel.WhatsApp : Channel.Email,
             schedule,
             recipients: dto.recipients,
             expectedResponses: dto.expectedResponses ?? [],
@@ -93,12 +100,12 @@ export class RemindersService {
         }
 
         if (dto.recipients) {
-            await this.assertRecipientsExist(dto.recipients);
+            await this.assertRecipientsAreTownMonitors(dto.recipients, currentUser);
         }
 
         const update: Record<string, any> = {};
         if (dto.message !== undefined) update.message = dto.message;
-        if (dto.channel !== undefined) update.channel = dto.channel;
+        // Channel is automatic (provider-driven); no manual override via API for now.
         if (dto.recipients !== undefined) update.recipients = dto.recipients;
         if (dto.expectedResponses !== undefined) update.expectedResponses = dto.expectedResponses;
         if (dto.schedule !== undefined) update.schedule = this.normalizeSchedule(dto.schedule);
@@ -199,6 +206,16 @@ export class RemindersService {
             return reminder;
         }
 
+        await this.interactionEventModel.create({
+            userId: new Types.ObjectId(userId),
+            contextType:
+                reminder.kind === ReminderKind.GroupChange
+                    ? NotificationContextType.GroupChange
+                    : NotificationContextType.Reminder,
+            contextId: String(reminder._id),
+            actionId: 'ACK',
+        });
+
         const updated = await this.reminderModel
             .findByIdAndUpdate(
                 id,
@@ -217,6 +234,89 @@ export class RemindersService {
         }
 
         // Everyone acknowledged: close one-time reminders; compute next run for recurring reminders.
+        if (updated.schedule?.type === ReminderScheduleType.Once || !updated.schedule?.type) {
+            return this.reminderModel
+                .findByIdAndUpdate(
+                    id,
+                    {
+                        $set: { status: ReminderStatus.Ended, nextRunAt: undefined },
+                    },
+                    { new: true },
+                )
+                .lean()
+                .exec();
+        }
+
+        const base = updated.lastSentAt ? new Date(updated.lastSentAt) : new Date();
+        const nextRunAt = computeNextRunAt(updated.schedule as any, base);
+        return this.reminderModel
+            .findByIdAndUpdate(
+                id,
+                {
+                    $set: {
+                        nextRunAt,
+                        acknowledgedByUserIds: [],
+                    },
+                },
+                { new: true },
+            )
+            .lean()
+            .exec();
+    }
+
+    async respond(id: string, dto: RespondReminderDto, currentUser: Record<string, any>) {
+        const reminder = await this.reminderModel.findById(id).lean().exec();
+        if (!reminder) throw new NotFoundException('Reminder not found');
+        this.assertCanRead(reminder, currentUser);
+
+        const userId = String(currentUser?.id ?? currentUser?._id);
+        if (!userId) throw new ForbiddenException('Missing user');
+
+        const value = String(dto.value ?? '').trim();
+        if (!value) throw new BadRequestException('value is required');
+
+        const allowed = new Set(
+            (reminder.expectedResponses ?? []).map((r: any) => String(r.value)),
+        );
+        if (!allowed.size) {
+            throw new BadRequestException('This reminder has no response options');
+        }
+        if (!allowed.has(value)) {
+            throw new BadRequestException('Invalid response value');
+        }
+
+        if (!(reminder.awaitingAckUserIds ?? []).includes(userId)) {
+            return reminder;
+        }
+
+        await this.interactionEventModel.create({
+            userId: new Types.ObjectId(userId),
+            contextType:
+                reminder.kind === ReminderKind.GroupChange
+                    ? NotificationContextType.GroupChange
+                    : NotificationContextType.Reminder,
+            contextId: String(reminder._id),
+            actionId: `RESP:${value}`,
+            meta: { value },
+        });
+
+        const updated = await this.reminderModel
+            .findByIdAndUpdate(
+                id,
+                {
+                    $pull: { awaitingAckUserIds: userId },
+                    $addToSet: { acknowledgedByUserIds: userId },
+                },
+                { new: true },
+            )
+            .lean()
+            .exec();
+        if (!updated) throw new NotFoundException('Reminder not found');
+
+        if ((updated.awaitingAckUserIds ?? []).length > 0) {
+            return updated;
+        }
+
         if (updated.schedule?.type === ReminderScheduleType.Once || !updated.schedule?.type) {
             return this.reminderModel
                 .findByIdAndUpdate(
@@ -281,7 +381,8 @@ export class RemindersService {
 
         const sentTo: string[] = [];
         const subject = 'Reminder';
-        const expiresAt = endOfDayInTimeZone(now, TZ);
+        const runAtForExpiry = reminder.nextRunAt ? new Date(reminder.nextRunAt) : now;
+        const expiresAt = endOfDayInTimeZone(runAtForExpiry, TZ);
 
         for (const userId of recipients) {
             const u = userById.get(userId);
@@ -370,13 +471,23 @@ export class RemindersService {
         return computeNextRunAt(schedule, now);
     }
 
-    private async assertRecipientsExist(userIds: string[]) {
+    private async assertRecipientsAreTownMonitors(
+        userIds: string[],
+        currentUser: Record<string, any>,
+    ) {
+        const town = await this.townScopeService.resolveMonitorTown(currentUser);
+        if (!town) throw new ForbiddenException('Monitor town not set');
+
         const unique = [...new Set(userIds)];
         const count = await this.userModel
-            .countDocuments({ _id: { $in: unique.map((id) => new Types.ObjectId(id)) } })
+            .countDocuments({
+                _id: { $in: unique.map((id) => new Types.ObjectId(id)) },
+                role: UserRole.Monitor,
+                originTown: town,
+            })
             .exec();
         if (count !== unique.length) {
-            throw new BadRequestException('One or more recipients not found');
+            throw new BadRequestException('Recipients must be monitors in your town');
         }
     }
 

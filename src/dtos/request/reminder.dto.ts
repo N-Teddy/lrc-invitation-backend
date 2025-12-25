@@ -133,3 +133,9 @@ export class UpdateReminderDto {
     @IsOptional()
     status?: ReminderStatus;
 }
+
+export class RespondReminderDto {
+    @ApiProperty()
+    @IsString()
+    value: string;
+}
