@@ -1,0 +1,32 @@
+import { ConfigService } from '@nestjs/config';
+export declare class AppConfigService {
+    private readonly configService;
+    constructor(configService: ConfigService);
+    get raw(): ConfigService;
+    get jwtAccessSecret(): string;
+    get jwtRefreshSecret(): string;
+    get actionTokenSecret(): string;
+    get googleClientId(): string | undefined;
+    get googleClientSecret(): string | undefined;
+    get appBaseUrl(): string;
+    get frontendBaseUrl(): string;
+    get apiBaseUrl(): string;
+    get storageProvider(): 'local' | 'cloudinary';
+    get storageBaseUrl(): string;
+    get uploadsDir(): string;
+    get cloudinaryCloudName(): string | undefined;
+    get cloudinaryApiKey(): string | undefined;
+    get cloudinaryApiSecret(): string | undefined;
+    get notificationProvider(): string;
+    get notificationFallbackProvider(): string;
+    get whatsAppEnabled(): boolean;
+    get whatsAppPhoneNumberId(): string | undefined;
+    get whatsAppBusinessAccountId(): string | undefined;
+    get whatsAppAccessToken(): string | undefined;
+    get inAppNotificationsEnabled(): boolean;
+    get mailHost(): string;
+    get mailPort(): number;
+    get mailUser(): string | undefined;
+    get mailPass(): string | undefined;
+    get mailFrom(): string;
+}
