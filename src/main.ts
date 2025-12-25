@@ -39,9 +39,9 @@ async function bootstrap() {
         corsOriginsRaw === '*'
             ? '*'
             : corsOriginsRaw
-                  .split(',')
-                  .map((x) => x.trim())
-                  .filter(Boolean);
+                .split(',')
+                .map((x) => x.trim())
+                .filter(Boolean);
 
     app.enableCors({
         origin: corsOrigins === '*' ? (corsCredentials ? true : '*') : corsOrigins,
@@ -113,7 +113,7 @@ async function bootstrap() {
 
     app.enableShutdownHooks();
 
-    const port = process.env.APP_PORT ?? process.env.PORT ?? 3000;
+    const port = process.env.PORT ?? 3000;
     await app.listen(port, '0.0.0.0');
     Logger.log(`🚀 Application is running on: http://localhost:${port}/${globalPrefix}`);
     Logger.log(`📚 Swagger documentation: http://localhost:${port}/${docsPath}`);

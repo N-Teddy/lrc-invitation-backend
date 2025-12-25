@@ -6,12 +6,11 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "prepare": "husky install",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "seed:super-monitors": "ts-node -r tsconfig-paths/register src/seed/seed-super-monitors.ts",
-    "start": "nest start",
+    "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
@@ -24,28 +23,28 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@nestjs/platform-socket.io": "^10.0.0",
-    "@nestjs/websockets": "^10.0.0",
-    "google-auth-library": "^9.14.2",
-    "nodemailer": "^6.9.10",
-    "socket.io": "^4.7.5",
-    "uuid": "^9.0.1",
-    "@nestjs/config": "^3.2.0",
     "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^3.2.0",
     "@nestjs/core": "^10.0.0",
-    "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/jwt": "^10.2.0",
     "@nestjs/mongoose": "^10.0.0",
+    "@nestjs/passport": "^10.0.3",
+    "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/platform-socket.io": "^10.0.0",
     "@nestjs/swagger": "^7.1.18",
+    "@nestjs/websockets": "^10.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
-    "@nestjs/jwt": "^10.2.0",
-    "@nestjs/passport": "^10.0.3",
-    "passport": "^0.7.0",
     "compression": "^1.7.4",
+    "google-auth-library": "^9.14.2",
     "helmet": "^7.1.0",
     "mongoose": "^7.6.0",
+    "nodemailer": "^6.9.10",
+    "passport": "^0.7.0",
     "reflect-metadata": "^0.2.0",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.7.5",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
@@ -55,6 +54,7 @@
     "@types/jest": "^29.5.2",
     "@types/node": "^20.3.1",
     "@types/supertest": "^6.0.0",
+    "@types/uuid": "^9.0.7",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^8.0.0",
@@ -68,9 +68,7 @@
     "ts-loader": "^9.4.3",
     "ts-node": "^10.9.1",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.1.3",
-    "husky": "^9.0.0",
-    "@types/uuid": "^9.0.7"
+    "typescript": "^5.1.3"
   },
   "jest": {
     "moduleFileExtensions": [
