@@ -82,6 +82,7 @@ export class RemindersService {
     }
 
     async findOneOrFail(id: string, currentUser: Record<string, any>) {
+        this.assertValidReminderId(id);
         const reminder = await this.reminderModel.findById(id).lean().exec();
         if (!reminder) throw new NotFoundException('Reminder not found');
         this.assertCanRead(reminder, currentUser);
@@ -90,6 +91,7 @@ export class RemindersService {
 
     async update(id: string, dto: UpdateReminderDto, currentUser: Record<string, any>) {
         this.assertCanCreate(currentUser);
+        this.assertValidReminderId(id);
 
         const existing = await this.reminderModel.findById(id).lean().exec();
         if (!existing) throw new NotFoundException('Reminder not found');
@@ -120,6 +122,7 @@ export class RemindersService {
 
     async activate(id: string, currentUser: Record<string, any>) {
         this.assertCanCreate(currentUser);
+        this.assertValidReminderId(id);
 
         const reminder = await this.reminderModel.findById(id).lean().exec();
         if (!reminder) throw new NotFoundException('Reminder not found');
@@ -154,6 +157,7 @@ export class RemindersService {
 
     async pause(id: string, currentUser: Record<string, any>) {
         this.assertCanCreate(currentUser);
+        this.assertValidReminderId(id);
         const reminder = await this.reminderModel.findById(id).lean().exec();
         if (!reminder) throw new NotFoundException('Reminder not found');
         this.assertCanEdit(reminder, currentUser);
@@ -172,6 +176,7 @@ export class RemindersService {
 
     async end(id: string, currentUser: Record<string, any>) {
         this.assertCanCreate(currentUser);
+        this.assertValidReminderId(id);
         const reminder = await this.reminderModel.findById(id).lean().exec();
         if (!reminder) throw new NotFoundException('Reminder not found');
         this.assertCanEdit(reminder, currentUser);
@@ -195,6 +200,7 @@ export class RemindersService {
     }
 
     async acknowledge(id: string, currentUser: Record<string, any>) {
+        this.assertValidReminderId(id);
         const reminder = await this.reminderModel.findById(id).lean().exec();
         if (!reminder) throw new NotFoundException('Reminder not found');
         this.assertCanRead(reminder, currentUser);
@@ -265,6 +271,7 @@ export class RemindersService {
     }
 
     async respond(id: string, dto: RespondReminderDto, currentUser: Record<string, any>) {
+        this.assertValidReminderId(id);
         const reminder = await this.reminderModel.findById(id).lean().exec();
         if (!reminder) throw new NotFoundException('Reminder not found');
         this.assertCanRead(reminder, currentUser);
@@ -522,5 +529,11 @@ export class RemindersService {
             currentUser?.role === UserRole.Monitor &&
             currentUser?.monitorLevel === MonitorLevel.Super
         );
+    }
+
+    private assertValidReminderId(id: string) {
+        if (!Types.ObjectId.isValid(id)) {
+            throw new BadRequestException('Invalid reminder id');
+        }
     }
 }

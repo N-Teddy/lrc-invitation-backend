@@ -10,6 +10,7 @@ import { User, UserSchema } from '../schema/user.schema';
 import { NotificationsCron } from '../common/cron/notifications.cron';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { ActionTokensService } from '../common/services/action-tokens.service';
+import { NotificationsController } from './notifications.controller';
 
 @Module({
     imports: [
@@ -19,6 +20,7 @@ import { ActionTokensService } from '../common/services/action-tokens.service';
         ]),
         ConversationsModule,
     ],
+    controllers: [NotificationsController],
     providers: [
         NotificationService,
         EmailNotificationSender,

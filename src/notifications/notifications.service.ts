@@ -1,4 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    Logger,
+    NotFoundException,
+} from '@nestjs/common';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { InjectModel } from '@nestjs/mongoose';
@@ -19,6 +25,7 @@ import { computeBackoffMs } from '../common/utils/backoff.util';
 import { ActionTokensService } from '../common/services/action-tokens.service';
 import { ConversationStateService } from '../conversations/conversation-state.service';
 import { SettingsService } from '../settings/settings.service';
+import { NotificationsListQueryDto } from '../dtos/request/notifications.dto';
 
 @Injectable()
 export class NotificationService {
@@ -155,6 +162,100 @@ export class NotificationService {
         return notif.toObject();
     }
 
+    async listForUser(currentUser: Record<string, any>, query: NotificationsListQueryDto) {
+        const userId = String(currentUser?.id ?? currentUser?._id ?? '');
+        if (!userId) throw new ForbiddenException('Missing user');
+
+        const page = Math.max(1, Number(query?.page ?? 1));
+        const limit = Math.min(100, Math.max(1, Number(query?.limit ?? 20)));
+        const skip = (page - 1) * limit;
+
+        const filter: Record<string, any> = { toUserId: new Types.ObjectId(userId) };
+        if (query?.status) filter.status = query.status;
+        if (query?.contextType) filter.contextType = query.contextType;
+        if (query?.channelUsed) filter.channelUsed = query.channelUsed;
+
+        if (query?.q?.trim()) {
+            const q = String(query.q).trim();
+            const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            filter.$or = [{ 'payload.subject': rx }, { 'payload.message': rx }];
+        }
+
+        const [total, docs] = await Promise.all([
+            this.notificationModel.countDocuments(filter),
+            this.notificationModel
+                .find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean()
+                .exec(),
+        ]);
+
+        const items = docs.map((n) => this.toListItem(n));
+        return { items, page, limit, total, hasMore: skip + items.length < total };
+    }
+
+    async getForUser(currentUser: Record<string, any>, notificationId: string) {
+        const userId = String(currentUser?.id ?? currentUser?._id ?? '');
+        if (!userId) throw new ForbiddenException('Missing user');
+
+        const notif = await this.notificationModel.findById(notificationId).lean().exec();
+        if (!notif) throw new NotFoundException('Notification not found');
+        if (String(notif.toUserId) !== userId) throw new ForbiddenException('Not allowed');
+
+        return this.toDetails(notif);
+    }
+
+    async markRead(currentUser: Record<string, any>, notificationId: string) {
+        const userId = String(currentUser?.id ?? currentUser?._id ?? '');
+        if (!userId) throw new ForbiddenException('Missing user');
+
+        const notif = await this.notificationModel.findById(notificationId).lean().exec();
+        if (!notif) throw new NotFoundException('Notification not found');
+        if (String(notif.toUserId) !== userId) throw new ForbiddenException('Not allowed');
+
+        if (
+            notif.status !== NotificationStatus.Acknowledged &&
+            notif.status !== NotificationStatus.Read
+        ) {
+            await this.notificationModel.findByIdAndUpdate(notificationId, {
+                $set: { status: NotificationStatus.Read },
+            });
+        }
+
+        return this.getForUser(currentUser, notificationId);
+    }
+
+    async retryNow(currentUser: Record<string, any>, notificationId: string) {
+        const userId = String(currentUser?.id ?? currentUser?._id ?? '');
+        if (!userId) throw new ForbiddenException('Missing user');
+
+        const notif = await this.notificationModel.findById(notificationId).lean().exec();
+        if (!notif) throw new NotFoundException('Notification not found');
+        if (String(notif.toUserId) !== userId) throw new ForbiddenException('Not allowed');
+
+        if (notif.status !== NotificationStatus.Failed) {
+            throw new BadRequestException('Only failed notifications can be retried');
+        }
+
+        if ((notif.attempts ?? 0) >= (notif.maxAttempts ?? 6)) {
+            throw new BadRequestException('Max attempts reached');
+        }
+
+        await this.notificationModel.findByIdAndUpdate(notificationId, {
+            $set: {
+                status: NotificationStatus.Queued,
+                nextAttemptAt: new Date(),
+                error: undefined,
+                skipReason: undefined,
+            },
+        });
+
+        await this.dispatchNotification(notificationId);
+        return this.getForUser(currentUser, notificationId);
+    }
+
     async processDueNotifications(now = new Date()) {
         const due = await this.notificationModel
             .find({
@@ -169,6 +270,54 @@ export class NotificationService {
         for (const item of due) {
             await this.dispatchNotification(String(item._id));
         }
+    }
+
+    private toListItem(notif: Record<string, any>) {
+        const payload = (notif.payload ?? {}) as Record<string, any>;
+        const templateData = (payload.templateData ?? {}) as Record<string, any>;
+
+        return {
+            id: String(notif._id),
+            contextType: notif.contextType,
+            contextId: String(notif.contextId),
+            status: notif.status,
+            primaryChannel: notif.primaryChannel,
+            channelUsed: notif.channelUsed,
+            fallbackUsed: notif.fallbackUsed,
+            title: payload.subject ?? templateData.subject ?? 'Notification',
+            message: payload.message ?? templateData.message ?? '',
+            error: notif.error,
+            attempts: notif.attempts,
+            maxAttempts: notif.maxAttempts,
+            createdAt: notif.createdAt,
+            sentAt: notif.sentAt,
+        };
+    }
+
+    private toDetails(notif: Record<string, any>) {
+        return {
+            id: String(notif._id),
+            contextType: notif.contextType,
+            contextId: String(notif.contextId),
+            status: notif.status,
+            primaryChannel: notif.primaryChannel,
+            channelUsed: notif.channelUsed,
+            fallbackUsed: notif.fallbackUsed,
+            skipReason: notif.skipReason,
+            templateName: notif.templateName,
+            templateLanguage: notif.templateLanguage,
+            languageUsed: notif.languageUsed,
+            languageFallbackUsed: notif.languageFallbackUsed,
+            payload: notif.payload,
+            error: notif.error,
+            attempts: notif.attempts,
+            maxAttempts: notif.maxAttempts,
+            nextAttemptAt: notif.nextAttemptAt,
+            lastAttemptAt: notif.lastAttemptAt,
+            createdAt: notif.createdAt,
+            updatedAt: notif.updatedAt,
+            sentAt: notif.sentAt,
+        };
     }
 
     private getPrimaryChannel(): Channel {
