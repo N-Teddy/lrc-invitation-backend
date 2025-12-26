@@ -168,7 +168,9 @@ export class SettingsService implements OnModuleInit {
         return { mode };
     }
 
-    async setAuthMode(mode: 'magic_link' | 'direct_email'): Promise<{ mode: 'magic_link' | 'direct_email' }> {
+    async setAuthMode(
+        mode: 'magic_link' | 'direct_email',
+    ): Promise<{ mode: 'magic_link' | 'direct_email' }> {
         await this.setValue(SETTINGS_KEYS.AuthMode, { mode });
         return { mode };
     }

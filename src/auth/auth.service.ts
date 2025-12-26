@@ -9,6 +9,7 @@ import { NotificationContextType } from '../common/enums/notification.enum';
 import { AppConfigService } from '../config/app-config.service';
 import { GoogleService } from '../common/third-party/google.service';
 import { Town } from '../common/enums/activity.enum';
+import { SettingsService } from '../settings/settings.service';
 
 const ACCESS_TOKEN_EXPIRES_IN = '24h';
 const REFRESH_TOKEN_EXPIRES_IN = '7d';
@@ -21,6 +22,7 @@ export class AuthService {
         private readonly notificationService: NotificationService,
         private readonly config: AppConfigService,
         private readonly googleService: GoogleService,
+        private readonly settingsService: SettingsService,
     ) {}
 
     async register(dto: RegisterRequestDto) {
@@ -189,11 +191,12 @@ export class AuthService {
     }
 
     getAuthMode() {
-        return { mode: this.config.authMode };
+        return this.settingsService.getAuthMode();
     }
 
     async directEmailLogin(email: string) {
-        if (this.config.authMode !== 'direct_email') {
+        const { mode } = await this.settingsService.getAuthMode();
+        if (mode !== 'direct_email') {
             throw new BadRequestException('Direct email login is disabled');
         }
         if (!email) throw new BadRequestException('Email is required');
