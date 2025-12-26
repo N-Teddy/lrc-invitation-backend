@@ -44,10 +44,12 @@ async function bootstrap() {
                   .filter(Boolean);
 
     app.enableCors({
-        origin: corsOrigins === '*' ? (corsCredentials ? true : '*') : corsOrigins,
-        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        // Use `true` to reflect the request origin (avoids "*" + credentials issues and works well behind proxies/CDNs).
+        origin: corsOrigins === '*' ? true : corsOrigins,
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
         credentials: corsCredentials,
-        allowedHeaders: ['Content-Type', 'Authorization'],
+        // Let the CORS middleware echo requested headers (prevents preflight failures when browsers add extra headers).
+        maxAge: 86400,
     });
 
     app.useGlobalPipes(

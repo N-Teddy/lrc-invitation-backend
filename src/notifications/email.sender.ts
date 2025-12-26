@@ -22,16 +22,17 @@ export class EmailNotificationSender implements NotificationSender {
         const port = this.config.mailPort;
         const secure = this.config.mailSecure;
         const requireTLS = this.config.mailRequireTls;
+        const ignoreTLS = this.config.mailIgnoreTls;
         const user = this.config.mailUser;
         const pass = this.config.mailPass;
 
-        if (
-            this.config.nodeEnv === 'production' &&
-            (host === 'localhost' || host === '127.0.0.1')
-        ) {
-            this.logger.warn(
-                `MAIL_HOST is "${host}" in production; emails will not reach real inboxes. Set MAIL_HOST/MAIL_PORT/MAIL_USER/MAIL_PASS for a real SMTP provider.`,
-            );
+        if (this.config.isProduction) {
+            if (!host) {
+                this.logger.error('MAIL_HOST is required in production');
+            }
+            if (!user || !pass) {
+                this.logger.error('MAIL_USER and MAIL_PASS are required in production');
+            }
         }
 
         this.transporter = nodemailer.createTransport({
@@ -39,6 +40,7 @@ export class EmailNotificationSender implements NotificationSender {
             port,
             secure,
             requireTLS,
+            ignoreTLS,
             auth:
                 user && pass
                     ? {

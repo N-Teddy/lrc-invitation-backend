@@ -149,16 +149,14 @@ export class NotificationService {
             }
         }
 
-        try {
-            await this.dispatchNotification(String(notif._id));
-        } catch (err) {
+        void this.dispatchNotification(String(notif._id)).catch(async (err) => {
             const attempt = (notif.attempts ?? 0) + 1;
             await this.notificationModel.findByIdAndUpdate(notif._id, {
                 status: NotificationStatus.Failed,
                 error: err?.message ?? String(err),
                 nextAttemptAt: new Date(Date.now() + computeBackoffMs(attempt)),
             });
-        }
+        });
         return notif.toObject();
     }
 

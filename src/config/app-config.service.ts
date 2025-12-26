@@ -9,6 +9,10 @@ export class AppConfigService {
         return this.configService.get<string>('NODE_ENV', 'development');
     }
 
+    get isProduction(): boolean {
+        return this.nodeEnv === 'production';
+    }
+
     // Expose raw ConfigService only when absolutely needed
     get raw(): ConfigService {
         return this.configService;
@@ -108,14 +112,17 @@ export class AppConfigService {
     }
 
     get mailHost(): string {
-        return this.configService.get<string>('MAIL_HOST', 'localhost');
+        if (!this.isProduction) return 'localhost';
+        return this.configService.get<string>('MAIL_HOST', '');
     }
 
     get mailPort(): number {
-        return Number(this.configService.get<number>('MAIL_PORT', 1025));
+        if (!this.isProduction) return 1025;
+        return Number(this.configService.get<number>('MAIL_PORT', 465));
     }
 
     get mailSecure(): boolean {
+        if (!this.isProduction) return false;
         const configured = this.configService.get<string>('MAIL_SECURE');
         if (configured === 'true') return true;
         if (configured === 'false') return false;
@@ -123,18 +130,26 @@ export class AppConfigService {
     }
 
     get mailRequireTls(): boolean {
-        return this.configService.get<string>('MAIL_REQUIRE_TLS', 'false') === 'true';
+        if (!this.isProduction) return false;
+        return this.configService.get<string>('MAIL_REQUIRE_TLS', 'true') !== 'false';
+    }
+
+    get mailIgnoreTls(): boolean {
+        return !this.isProduction;
     }
 
     get mailTlsRejectUnauthorized(): boolean {
+        if (!this.isProduction) return false;
         return this.configService.get<string>('MAIL_TLS_REJECT_UNAUTHORIZED', 'true') !== 'false';
     }
 
     get mailUser(): string | undefined {
+        if (!this.isProduction) return undefined;
         return this.configService.get<string>('MAIL_USER');
     }
 
     get mailPass(): string | undefined {
+        if (!this.isProduction) return undefined;
         return this.configService.get<string>('MAIL_PASS');
     }
 
