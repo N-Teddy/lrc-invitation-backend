@@ -56,6 +56,9 @@ export class ActivityAttendanceStatsDto {
     @ApiProperty({ description: 'Registered present + external present.' })
     overallPresentCount: number;
 
+    @ApiProperty({ description: 'Total donations recorded for this activity (FCFA).' })
+    donationsTotalFcfa: number;
+
     @ApiProperty({ type: [CountByKeyDto] })
     byOriginTown: CountByKeyDto[];
 
@@ -78,6 +81,9 @@ export class YearlyAttendanceSummaryDto {
 
     @ApiProperty({ description: 'Registered present + external present.' })
     overallPresentCount: number;
+
+    @ApiProperty({ description: 'Total donations recorded for this year (FCFA).' })
+    donationsTotalFcfa: number;
 
     @ApiProperty({ type: [CountByKeyDto] })
     byTown: CountByKeyDto[];

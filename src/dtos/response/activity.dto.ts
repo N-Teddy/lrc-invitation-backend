@@ -5,6 +5,9 @@ export class ActivityResponseDto {
     @ApiProperty()
     id: string;
 
+    @ApiProperty()
+    year: number;
+
     @ApiProperty({ enum: ActivityType })
     type: ActivityType;
 
@@ -16,6 +19,9 @@ export class ActivityResponseDto {
 
     @ApiProperty()
     endDate: Date;
+
+    @ApiProperty({ description: 'True when the activity has ended (based on endDate).' })
+    ended: boolean;
 
     @ApiPropertyOptional()
     conferenceDurationDays?: number;
@@ -31,6 +37,9 @@ export class ActivityResponseDto {
 
     @ApiPropertyOptional()
     createdByUserId?: string;
+
+    @ApiPropertyOptional()
+    createdReason?: string;
 
     @ApiPropertyOptional()
     notes?: string;

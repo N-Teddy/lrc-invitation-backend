@@ -54,7 +54,13 @@ export class ChildrenService {
     ) {}
 
     async list(
-        filters: { q?: string; includeArchived?: boolean; page?: number; limit?: number },
+        filters: {
+            q?: string;
+            group?: ChildGroup;
+            includeArchived?: boolean;
+            page?: number;
+            limit?: number;
+        },
         currentUser: Record<string, any>,
     ): Promise<{
         items: any[];
@@ -85,6 +91,23 @@ export class ChildrenService {
                 $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
                 $options: 'i',
             };
+        }
+
+        const group = filters.group as ChildGroup | undefined;
+        if (group) {
+            if (!Object.values(ChildGroup).includes(group)) {
+                throw new BadRequestException('Invalid group');
+            }
+            const matches = await this.childProfileModel
+                .find({ currentGroup: group })
+                .select({ userId: 1 })
+                .lean()
+                .exec();
+            const ids = matches.map((m: any) => m.userId).filter(Boolean);
+            if (!ids.length) {
+                return { items: [], page, limit, total: 0, missingProfileImageCount: 0 };
+            }
+            query._id = { $in: ids };
         }
 
         const [total, missingProfileImageCount, users] = await Promise.all([
@@ -133,6 +156,51 @@ export class ChildrenService {
         };
     }
 
+    async getGroupCounts(
+        filters: { includeArchived?: boolean },
+        currentUser: Record<string, any>,
+    ): Promise<{
+        total: number;
+        counts: Array<{ group: ChildGroup; count: number }>;
+        unknownCount: number;
+    }> {
+        const scopeTown = await this.resolveMonitorTownOrFail(currentUser);
+        const isSuper = currentUser?.monitorLevel === MonitorLevel.Super;
+        const includeArchived = !!filters.includeArchived && isSuper;
+
+        const query: Record<string, any> = { role: UserRole.Child };
+        if (!includeArchived) query.lifecycleStatus = LifecycleStatus.Active;
+        if (!isSuper) query.originTown = scopeTown;
+
+        const from = this.childProfileModel.collection.name;
+        const rows: Array<{ _id: ChildGroup | null; count: number }> = await this.userModel
+            .aggregate([
+                { $match: query },
+                { $lookup: { from, localField: '_id', foreignField: 'userId', as: 'profile' } },
+                { $unwind: { path: '$profile', preserveNullAndEmptyArrays: true } },
+                { $group: { _id: '$profile.currentGroup', count: { $sum: 1 } } },
+            ])
+            .exec();
+
+        const counts: Array<{ group: ChildGroup; count: number }> = [];
+        let unknownCount = 0;
+        let total = 0;
+
+        for (const r of rows) {
+            const count = Number(r.count) || 0;
+            total += count;
+            const group = r._id as ChildGroup | null;
+            if (group && Object.values(ChildGroup).includes(group)) {
+                counts.push({ group, count });
+            } else {
+                unknownCount += count;
+            }
+        }
+
+        counts.sort((a, b) => a.group.localeCompare(b.group));
+        return { total, counts, unknownCount };
+    }
+
     async get(id: string, currentUser: Record<string, any>) {
         const scopeTown = await this.resolveMonitorTownOrFail(currentUser);
         const isSuper = currentUser?.monitorLevel === MonitorLevel.Super;
@@ -175,7 +243,10 @@ export class ChildrenService {
 
         const guardians = this.parseGuardians(dto.guardiansJson);
 
-        const profileImage = file ? await this.mediaService.uploadProfileImage(file) : undefined;
+        if (!file) {
+            throw new BadRequestException('Profile image is required');
+        }
+        const profileImage = await this.mediaService.uploadProfileImage(file);
 
         const whatsApp = dto.whatsAppPhoneE164
             ? {
@@ -211,6 +282,116 @@ export class ChildrenService {
         });
 
         return { ...user.toObject(), group, guardians };
+    }
+
+    async bulkCreateMultipart(
+        childrenJson: string,
+        files: UploadedFile[] | undefined,
+        currentUser: Record<string, any>,
+    ) {
+        const scopeTown = await this.resolveMonitorTownOrFail(currentUser);
+        this.assertCanCreate(currentUser);
+
+        const trimmed = (childrenJson ?? '').trim();
+        if (!trimmed) throw new BadRequestException('childrenJson is required');
+
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(trimmed) as unknown;
+        } catch {
+            throw new BadRequestException('childrenJson must be valid JSON');
+        }
+        if (!Array.isArray(parsed) || parsed.length < 1) {
+            throw new BadRequestException('childrenJson must be a non-empty array');
+        }
+
+        const children = parsed as any[];
+        const uploads = files ?? [];
+        if (uploads.length !== children.length) {
+            throw new BadRequestException(
+                `files count must match childrenJson count (${children.length})`,
+            );
+        }
+        if (uploads.some((f) => !f)) {
+            throw new BadRequestException('Each child must include a profile image');
+        }
+
+        const mapping = await this.settingsService.getAgeToGroupMapping();
+        const now = new Date();
+
+        const created: any[] = [];
+        const errors: Array<{ index: number; message: string }> = [];
+
+        for (let i = 0; i < children.length; i += 1) {
+            const item = children[i] ?? {};
+            const file = uploads[i];
+            try {
+                const fullName = String(item.fullName ?? '').trim();
+                if (fullName.length < 2) throw new BadRequestException('Invalid fullName');
+
+                const dob = new Date(item.dateOfBirth);
+                if (Number.isNaN(dob.getTime())) {
+                    throw new BadRequestException('Invalid dateOfBirth');
+                }
+                const ageYears = computeAgeYears(dob, now);
+                if (ageYears < 0) throw new BadRequestException('Invalid dateOfBirth');
+                if (ageYears >= 19) {
+                    throw new BadRequestException(
+                        'Adults are out of scope (child must be 18 or younger)',
+                    );
+                }
+
+                const guardians = this.normalizeGuardiansArray(item.guardians);
+                const profileImage = await this.mediaService.uploadProfileImage(file);
+
+                const whatsApp = item.whatsAppPhoneE164
+                    ? {
+                          phoneE164: String(item.whatsAppPhoneE164 ?? ''),
+                          optIn:
+                              typeof item.whatsAppOptIn === 'boolean' ? item.whatsAppOptIn : true,
+                      }
+                    : undefined;
+
+                const user = await new this.userModel({
+                    fullName,
+                    role: UserRole.Child,
+                    dateOfBirth: dob,
+                    originTown: scopeTown,
+                    preferredLanguage: item.preferredLanguage ?? 'en',
+                    whatsApp,
+                    profileImage,
+                    lifecycleStatus: LifecycleStatus.Active,
+                }).save();
+
+                const group = computeGroupFromAge(ageYears, mapping.bands);
+                await this.childProfileModel.findOneAndUpdate(
+                    { userId: user._id },
+                    {
+                        $set: {
+                            currentGroup: group,
+                            groupComputedAt: now,
+                            guardians,
+                        },
+                    },
+                    { upsert: true },
+                );
+
+                created.push({ ...user.toObject(), group, guardians });
+            } catch (err) {
+                const message = err?.message ?? 'Invalid child record';
+                errors.push({ index: i, message });
+            }
+        }
+
+        if (created.length) {
+            await this.notifyChildrenBulkCreated({
+                town: scopeTown,
+                totalCreated: created.length,
+                sampleNames: created.slice(0, 10).map((c) => c.fullName as string),
+            });
+        }
+
+        return { created, errors };
     }
 
     async bulkCreate(children: CreateChildDto[], currentUser: Record<string, any>) {
@@ -575,6 +756,34 @@ export class ChildrenService {
 
         const guardians: GuardianInput[] = [];
         for (const item of parsed) {
+            if (!item || typeof item !== 'object') {
+                throw new BadRequestException('Invalid guardian entry');
+            }
+            const g = item as any;
+            const fullName = String(g.fullName ?? '').trim();
+            const phoneE164 = String(g.phoneE164 ?? '').trim();
+            const relationship = String(g.relationship ?? '').trim();
+            const email = g.email ? String(g.email).trim() : undefined;
+
+            if (!fullName || !phoneE164 || !relationship) {
+                throw new BadRequestException(
+                    'Each guardian requires fullName, phoneE164, relationship',
+                );
+            }
+
+            guardians.push({ fullName, phoneE164, relationship, email: email || undefined });
+        }
+
+        return guardians;
+    }
+
+    private normalizeGuardiansArray(raw: unknown): GuardianInput[] {
+        if (!Array.isArray(raw) || raw.length < 1) {
+            throw new BadRequestException('At least one parent/guardian is required');
+        }
+
+        const guardians: GuardianInput[] = [];
+        for (const item of raw) {
             if (!item || typeof item !== 'object') {
                 throw new BadRequestException('Invalid guardian entry');
             }

@@ -61,6 +61,12 @@ export class MagicLinkRequestDto {
     email: string;
 }
 
+export class DirectEmailLoginDto {
+    @ApiProperty()
+    @IsEmail()
+    email: string;
+}
+
 export class RefreshTokenDto {
     @ApiProperty()
     @IsString()

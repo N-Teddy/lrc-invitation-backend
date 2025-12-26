@@ -132,6 +132,47 @@ export class SettingsService implements OnModuleInit {
         return settings;
     }
 
+    async getActivityYearLocks(): Promise<{ lockedYears: number[] }> {
+        const value = await this.getValue<{ lockedYears: number[] }>(
+            SETTINGS_KEYS.ActivityYearLocks,
+        );
+        const lockedYears = (value?.lockedYears ?? []).filter((y) =>
+            Number.isFinite(y),
+        ) as number[];
+        return { lockedYears: [...new Set(lockedYears)].sort((a, b) => a - b) };
+    }
+
+    async lockActivityYear(year: number): Promise<{ lockedYears: number[] }> {
+        if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+            throw new BadRequestException('Invalid year');
+        }
+        const existing = await this.getActivityYearLocks();
+        const next = [...new Set([...existing.lockedYears, year])].sort((a, b) => a - b);
+        await this.setValue(SETTINGS_KEYS.ActivityYearLocks, { lockedYears: next });
+        return { lockedYears: next };
+    }
+
+    async isActivityYearLocked(year: number): Promise<boolean> {
+        const locks = await this.getActivityYearLocks();
+        return locks.lockedYears.includes(year);
+    }
+
+    async getAuthMode(): Promise<{ mode: 'magic_link' | 'direct_email' }> {
+        const value = await this.getValue<{ mode?: 'magic_link' | 'direct_email' }>(
+            SETTINGS_KEYS.AuthMode,
+        );
+        const mode = value?.mode ?? this.config.authMode;
+        if (mode !== 'magic_link' && mode !== 'direct_email') {
+            return { mode: 'magic_link' };
+        }
+        return { mode };
+    }
+
+    async setAuthMode(mode: 'magic_link' | 'direct_email'): Promise<{ mode: 'magic_link' | 'direct_email' }> {
+        await this.setValue(SETTINGS_KEYS.AuthMode, { mode });
+        return { mode };
+    }
+
     private async getValue<T>(key: string): Promise<T | undefined> {
         const doc = await this.settingsModel.findOne({ key }).lean().exec();
         return doc?.value as T | undefined;
@@ -207,6 +248,28 @@ export class SettingsService implements OnModuleInit {
                 $setOnInsert: {
                     key: SETTINGS_KEYS.MediaStorage,
                     value: { providerHint: this.config.storageProvider },
+                },
+            },
+            { upsert: true },
+        );
+
+        await this.settingsModel.updateOne(
+            { key: SETTINGS_KEYS.ActivityYearLocks },
+            {
+                $setOnInsert: {
+                    key: SETTINGS_KEYS.ActivityYearLocks,
+                    value: { lockedYears: [] },
+                },
+            },
+            { upsert: true },
+        );
+
+        await this.settingsModel.updateOne(
+            { key: SETTINGS_KEYS.AuthMode },
+            {
+                $setOnInsert: {
+                    key: SETTINGS_KEYS.AuthMode,
+                    value: { mode: this.config.authMode },
                 },
             },
             { upsert: true },

@@ -9,6 +9,9 @@ export class AttendanceEntryResponseDto {
     @ApiProperty()
     present: boolean;
 
+    @ApiPropertyOptional({ description: 'Optional donation amount (FCFA).' })
+    donationFcfa?: number;
+
     @ApiProperty({ enum: AttendanceRoleAtTime })
     roleAtTime: AttendanceRoleAtTime;
 
@@ -31,6 +34,9 @@ export class ExternalAttendanceEntryResponseDto {
 
     @ApiProperty({ enum: ClassificationLabel })
     classificationLabel: ClassificationLabel;
+
+    @ApiPropertyOptional({ description: 'Optional donation amount (FCFA).' })
+    donationFcfa?: number;
 
     @ApiPropertyOptional({ enum: Town })
     scopeTown?: Town;

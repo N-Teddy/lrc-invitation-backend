@@ -6,11 +6,13 @@ import {
     RegisterRequestDto,
     MagicLinkExchangeDto,
     MagicLinkRequestDto,
+    DirectEmailLoginDto,
     RefreshTokenDto,
     GoogleSignInDto,
 } from '../dtos/request/auth.dto';
 import {
     AuthTokensResponseDto,
+    AuthModeResponseDto,
     MagicLinkRequestResponseDto,
     RegisterResponseDto,
 } from '../dtos/response/auth.dto';
@@ -35,6 +37,20 @@ export class AuthController {
     @ApiOkResponse({ type: MagicLinkRequestResponseDto })
     requestMagicLink(@Body() dto: MagicLinkRequestDto) {
         return this.authService.requestMagicLink(dto.email);
+    }
+
+    @Public()
+    @Get('mode')
+    @ApiOkResponse({ type: AuthModeResponseDto })
+    mode() {
+        return this.authService.getAuthMode();
+    }
+
+    @Public()
+    @Post('login')
+    @ApiOkResponse({ type: AuthTokensResponseDto })
+    login(@Body() dto: DirectEmailLoginDto) {
+        return this.authService.directEmailLogin(dto.email);
     }
 
     @Public()

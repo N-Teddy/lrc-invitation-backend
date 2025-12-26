@@ -144,4 +144,10 @@ export class AppConfigService {
             'LRC Jeunesse <no-reply@lrc-jeunesse.local>',
         );
     }
+
+    get authMode(): 'magic_link' | 'direct_email' {
+        const configured = this.configService.get<string>('AUTH_MODE', 'magic_link');
+        if (configured === 'direct_email' || configured === 'magic_link') return configured;
+        return 'magic_link';
+    }
 }

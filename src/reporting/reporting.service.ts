@@ -220,7 +220,7 @@ export class ReportingService {
 
         const attendance = await this.attendanceModel
             .findOne({ activityId: new Types.ObjectId(activityId) })
-            .select({ takenAt: 1, externalEntries: 1 })
+            .select({ takenAt: 1, entries: 1, externalEntries: 1 })
             .lean()
             .exec();
 
@@ -288,6 +288,26 @@ export class ReportingService {
         const overallPresentCount =
             (childrenTotals.present ?? 0) + (monitorTotals.present ?? 0) + externalPresentCount;
 
+        const scopedEntriesForDonations = scope?.originTown
+            ? ((attendance as any)?.entries ?? []).filter(
+                  (e: any) => (e.originTownAtTime as Town | undefined) === scope.originTown,
+              )
+            : ((attendance as any)?.entries ?? []);
+
+        const donationsEntriesTotal = scopedEntriesForDonations.reduce((sum: number, e: any) => {
+            const amount = Number(e?.donationFcfa);
+            if (!Number.isFinite(amount) || amount <= 0) return sum;
+            return sum + Math.floor(amount);
+        }, 0);
+
+        const donationsExternalTotal = scopedExternalEntries.reduce((sum: number, x: any) => {
+            const amount = Number(x?.donationFcfa);
+            if (!Number.isFinite(amount) || amount <= 0) return sum;
+            return sum + Math.floor(amount);
+        }, 0);
+
+        const donationsTotalFcfa = donationsEntriesTotal + donationsExternalTotal;
+
         return {
             activityId,
             activityType: activity.type as ActivityType,
@@ -301,6 +321,7 @@ export class ReportingService {
             },
             externalPresentCount,
             overallPresentCount,
+            donationsTotalFcfa,
             byOriginTown: normalizeCounts(
                 [...originTownMap.entries()].map(([key, count]) => ({ key, count })),
             ),
@@ -374,6 +395,7 @@ export class ReportingService {
                 },
                 externalPresentCount: 0,
                 overallPresentCount: 0,
+                donationsTotalFcfa: 0,
                 byTown: [],
                 byActivityType: [],
                 byClassificationLabel: [],
@@ -482,19 +504,21 @@ export class ReportingService {
 
         const yearlyAttendanceDocs = await this.attendanceModel
             .find({ activityId: { $in: activityIds } })
-            .select({ activityId: 1, externalEntries: 1 })
+            .select({ activityId: 1, entries: 1, externalEntries: 1 })
             .lean()
             .exec();
 
         const externalByClassification = new Map<string, number>();
         const externalByTown = new Map<string, number>();
         let externalPresentCount = 0;
+        let donationsTotalFcfa = 0;
 
         for (const doc of yearlyAttendanceDocs) {
             const meta = activityById.get(String((doc as any).activityId));
             if (!meta) continue;
 
             const external = (doc as any).externalEntries ?? [];
+            const entries = (doc as any).entries ?? [];
             const legacyCounts = (doc as any).externalCounts ?? [];
             for (const x of external) {
                 const townKey = String((x.scopeTown as Town | undefined) ?? meta.town ?? 'unknown');
@@ -508,6 +532,21 @@ export class ReportingService {
                     labelKey,
                     (externalByClassification.get(labelKey) ?? 0) + 1,
                 );
+
+                const donationAmount = Number(x?.donationFcfa);
+                if (Number.isFinite(donationAmount) && donationAmount > 0) {
+                    donationsTotalFcfa += Math.floor(donationAmount);
+                }
+            }
+
+            for (const e of entries) {
+                const entryTown = (e.originTownAtTime as Town | undefined) ?? meta.town;
+                if (scope?.originTown && (entryTown as any) !== scope.originTown) continue;
+
+                const donationAmount = Number(e?.donationFcfa);
+                if (Number.isFinite(donationAmount) && donationAmount > 0) {
+                    donationsTotalFcfa += Math.floor(donationAmount);
+                }
             }
 
             for (const x of legacyCounts) {
@@ -568,6 +607,7 @@ export class ReportingService {
             },
             externalPresentCount,
             overallPresentCount,
+            donationsTotalFcfa,
             byTown: normalizeCounts([...townMap.entries()].map(([key, count]) => ({ key, count }))),
             byActivityType: normalizeCounts(
                 [...byActivityTypeCounts.entries()].map(([key, count]) => ({ key, count })),

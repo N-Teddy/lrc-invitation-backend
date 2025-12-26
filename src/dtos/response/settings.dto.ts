@@ -65,3 +65,13 @@ export class MediaStorageResponseDto {
     @ApiProperty({ required: false, type: [String] })
     allowedMimeTypes?: string[];
 }
+
+export class ActivityYearLocksResponseDto {
+    @ApiProperty({ type: [Number], example: [2024, 2025] })
+    lockedYears: number[];
+}
+
+export class AuthModeSettingsResponseDto {
+    @ApiProperty({ enum: ['magic_link', 'direct_email'] })
+    mode: 'magic_link' | 'direct_email';
+}

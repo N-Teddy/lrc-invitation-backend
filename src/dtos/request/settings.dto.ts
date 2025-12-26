@@ -115,3 +115,17 @@ export class SetMediaStorageRequestDto {
     @IsString({ each: true })
     allowedMimeTypes?: string[];
 }
+
+export class LockActivityYearRequestDto {
+    @ApiProperty({ example: 2026 })
+    @IsInt()
+    @Min(2000)
+    @Max(2100)
+    year: number;
+}
+
+export class SetAuthModeRequestDto {
+    @ApiProperty({ enum: ['magic_link', 'direct_email'] })
+    @IsIn(['magic_link', 'direct_email'])
+    mode: 'magic_link' | 'direct_email';
+}

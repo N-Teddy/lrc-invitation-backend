@@ -6,6 +6,9 @@ export type ActivityDocument = HydratedDocument<Activity>;
 
 @Schema({ timestamps: true })
 export class Activity {
+    @Prop({ required: true })
+    year: number;
+
     @Prop({ type: String, enum: ActivityType, required: true })
     type: ActivityType;
 
@@ -34,10 +37,14 @@ export class Activity {
     createdByUserId?: Types.ObjectId;
 
     @Prop()
+    createdReason?: string;
+
+    @Prop()
     notes?: string;
 }
 
 export const ActivitySchema = SchemaFactory.createForClass(Activity);
 ActivitySchema.index({ town: 1, startDate: 1 });
+ActivitySchema.index({ year: 1, town: 1 });
 ActivitySchema.index({ type: 1 });
 ActivitySchema.index({ targetingCode: 1 });

@@ -20,3 +20,8 @@ export class MagicLinkRequestResponseDto {
     @ApiProperty()
     message: string;
 }
+
+export class AuthModeResponseDto {
+    @ApiProperty({ enum: ['magic_link', 'direct_email'] })
+    mode: 'magic_link' | 'direct_email';
+}

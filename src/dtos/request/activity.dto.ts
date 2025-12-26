@@ -44,6 +44,13 @@ export class CreateActivityDto {
     @IsString()
     @IsOptional()
     notes?: string;
+
+    @ApiPropertyOptional({
+        description: 'Required when creating an activity in a locked year.',
+    })
+    @IsString()
+    @IsOptional()
+    reason?: string;
 }
 
 export class UpdateActivityDto extends PartialType(CreateActivityDto) {}

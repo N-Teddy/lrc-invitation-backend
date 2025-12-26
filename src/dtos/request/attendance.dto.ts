@@ -3,8 +3,11 @@ import {
     IsArray,
     IsBoolean,
     IsEnum,
+    IsInt,
     IsMongoId,
+    IsOptional,
     IsString,
+    Min,
     MinLength,
     ValidateNested,
 } from 'class-validator';
@@ -19,6 +22,12 @@ export class AttendanceEntryRequestDto {
     @ApiProperty()
     @IsBoolean()
     present: boolean;
+
+    @ApiProperty({ required: false, description: 'Optional donation amount (FCFA).' })
+    @IsInt()
+    @Min(0)
+    @IsOptional()
+    donationFcfa?: number;
 }
 
 export class ExternalAttendanceEntryRequestDto {
@@ -34,6 +43,12 @@ export class ExternalAttendanceEntryRequestDto {
     @IsString()
     @MinLength(2)
     fullName: string;
+
+    @ApiProperty({ required: false, description: 'Optional donation amount (FCFA).' })
+    @IsInt()
+    @Min(0)
+    @IsOptional()
+    donationFcfa?: number;
 }
 
 export class UpsertAttendanceDto {

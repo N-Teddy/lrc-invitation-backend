@@ -103,3 +103,14 @@ export class BulkCreateChildrenDto {
     @Type(() => CreateChildDto)
     children: CreateChildDto[];
 }
+
+export class BulkCreateChildrenMultipartDto {
+    @ApiProperty({
+        description:
+            'JSON stringified children array. Each child must include guardians (at least 1).',
+        example:
+            '[{"fullName":"John Doe","dateOfBirth":"2014-06-02","preferredLanguage":"en","guardians":[{"fullName":"Jane Doe","phoneE164":"+237693087159","relationship":"Mother"}]}]',
+    })
+    @IsString()
+    childrenJson: string;
+}

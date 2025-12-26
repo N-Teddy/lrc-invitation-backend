@@ -13,6 +13,9 @@ class AttendanceEntry {
     @Prop({ required: true })
     present: boolean;
 
+    @Prop()
+    donationFcfa?: number;
+
     @Prop({ type: String, enum: AttendanceRoleAtTime, required: true })
     roleAtTime: AttendanceRoleAtTime;
 
@@ -36,6 +39,9 @@ class ExternalAttendanceEntry {
 
     @Prop({ required: true, trim: true })
     fullName: string;
+
+    @Prop()
+    donationFcfa?: number;
 
     @Prop({ type: String, enum: Town })
     scopeTown?: Town;

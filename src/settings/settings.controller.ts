@@ -8,6 +8,8 @@ import {
     SetLanguagesRequestDto,
     SetMediaStorageRequestDto,
     SetNotificationRecipientsRequestDto,
+    LockActivityYearRequestDto,
+    SetAuthModeRequestDto,
 } from '../dtos/request/settings.dto';
 import {
     AgeToGroupMappingResponseDto,
@@ -15,6 +17,8 @@ import {
     LanguagesResponseDto,
     MediaStorageResponseDto,
     NotificationRecipientsResponseDto,
+    ActivityYearLocksResponseDto,
+    AuthModeSettingsResponseDto,
 } from '../dtos/response/settings.dto';
 import { SettingsService } from './settings.service';
 
@@ -92,5 +96,33 @@ export class SettingsController {
     @ApiOkResponse({ type: MediaStorageResponseDto })
     setMediaStorage(@Body() dto: SetMediaStorageRequestDto) {
         return this.settingsService.setMediaStorageSettings(dto);
+    }
+
+    @Roles([UserRole.Monitor])
+    @Get('activity-years')
+    @ApiOkResponse({ type: ActivityYearLocksResponseDto })
+    getActivityYears() {
+        return this.settingsService.getActivityYearLocks();
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Super])
+    @Put('activity-years/lock')
+    @ApiOkResponse({ type: ActivityYearLocksResponseDto })
+    lockActivityYear(@Body() dto: LockActivityYearRequestDto) {
+        return this.settingsService.lockActivityYear(dto.year);
+    }
+
+    @Roles([UserRole.Monitor])
+    @Get('auth-mode')
+    @ApiOkResponse({ type: AuthModeSettingsResponseDto })
+    getAuthMode() {
+        return this.settingsService.getAuthMode();
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Super])
+    @Put('auth-mode')
+    @ApiOkResponse({ type: AuthModeSettingsResponseDto })
+    setAuthMode(@Body() dto: SetAuthModeRequestDto) {
+        return this.settingsService.setAuthMode(dto.mode);
     }
 }

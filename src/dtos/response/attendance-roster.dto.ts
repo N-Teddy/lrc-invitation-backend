@@ -25,6 +25,11 @@ export class AttendanceRosterParticipantDto {
 
     @ApiPropertyOptional()
     present?: boolean;
+
+    @ApiPropertyOptional({
+        description: 'Optional donation amount (FCFA) recorded for this participant.',
+    })
+    donationFcfa?: number;
 }
 
 export class AttendanceRosterResponseDto {
@@ -74,6 +79,7 @@ export class AttendanceRosterResponseDto {
         externalId: string;
         fullName: string;
         classificationLabel: ClassificationLabel;
+        donationFcfa?: number;
     }>;
 }
 

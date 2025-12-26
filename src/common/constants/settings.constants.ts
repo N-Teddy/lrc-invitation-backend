@@ -5,6 +5,8 @@ export const SETTINGS_KEYS = {
     SupportedLanguages: 'supportedLanguages',
     DefaultLanguage: 'defaultLanguage',
     MediaStorage: 'mediaStorage',
+    ActivityYearLocks: 'activityYearLocks',
+    AuthMode: 'authMode',
 } as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[keyof typeof SETTINGS_KEYS];

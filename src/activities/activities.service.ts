@@ -19,7 +19,11 @@ import { ChildProfile, ChildProfileDocument } from '../schema/child-profile.sche
 import { Attendance, AttendanceDocument } from '../schema/attendance.schema';
 import { AttendanceRoleAtTime } from '../common/enums/attendance.enum';
 import { AgeBand } from '../common/constants/groups.constants';
-import { computeAgeYears } from '../common/utils/groups.util';
+import {
+    computeAgeYears,
+    getDatePartsInTimeZone,
+    startOfDayKey,
+} from '../common/utils/groups.util';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
 import { subtractMonths } from '../common/utils/date.util';
 import {
@@ -45,7 +49,14 @@ export class ActivitiesService {
     async create(dto: CreateActivityDto, currentUser: Record<string, any>) {
         const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
         await this.assertCanCreate(dto, currentUser, userTown);
-        const activityPayload = this.normalizeCreatePayload(dto, currentUser, userTown);
+        const basePayload = this.normalizeCreatePayload(dto, currentUser, userTown);
+
+        const reason = dto.reason?.trim();
+        const isLockedYear = await this.settingsService.isActivityYearLocked(basePayload.year);
+        if (isLockedYear && !reason) {
+            throw new BadRequestException('Reason is required to add activities to a locked year');
+        }
+        const activityPayload = { ...basePayload, createdReason: reason || undefined };
 
         const { invitedChildrenUserIds, invitedMonitorUserIds } =
             await this.computeInvitations(activityPayload);
@@ -55,11 +66,11 @@ export class ActivitiesService {
             invitedChildrenUserIds,
             invitedMonitorUserIds,
         }).save();
-        return created.toObject();
+        return this.ensureYear(created.toObject());
     }
 
     async findAll(
-        filters: { town?: Town; type?: ActivityType; from?: string; to?: string },
+        filters: { town?: Town; type?: ActivityType; year?: number; from?: string; to?: string },
         currentUser?: Record<string, any>,
     ) {
         const baseQuery: Record<string, any> = {};
@@ -69,6 +80,11 @@ export class ActivitiesService {
             baseQuery.startDate = {};
             if (filters.from) baseQuery.startDate.$gte = new Date(filters.from);
             if (filters.to) baseQuery.startDate.$lte = new Date(filters.to);
+        }
+        if (filters.year) {
+            const from = new Date(Date.UTC(filters.year, 0, 1));
+            const to = new Date(Date.UTC(filters.year + 1, 0, 1));
+            baseQuery.startDate = { ...(baseQuery.startDate ?? {}), $gte: from, $lt: to };
         }
 
         if (
@@ -98,18 +114,25 @@ export class ActivitiesService {
                 ],
             };
 
-            return this.activityModel
+            const items = await this.activityModel
                 .find({ $and: [baseQuery, scopeQuery] })
                 .sort({ startDate: -1 })
                 .lean()
                 .exec();
+            return items.map((a) => this.ensureYear(a));
         }
 
-        return this.activityModel.find(baseQuery).sort({ startDate: -1 }).lean().exec();
+        const items = await this.activityModel
+            .find(baseQuery)
+            .sort({ startDate: -1 })
+            .lean()
+            .exec();
+        return items.map((a) => this.ensureYear(a));
     }
 
     async findOneOrFail(id: string, currentUser?: Record<string, any>) {
-        const activity = await this.activityModel.findById(id).lean().exec();
+        const activityRaw = await this.activityModel.findById(id).lean().exec();
+        const activity = activityRaw ? this.ensureYear(activityRaw) : null;
         if (!activity) throw new NotFoundException('Activity not found');
         if (currentUser) {
             await this.assertCanRead(activity, currentUser);
@@ -128,7 +151,7 @@ export class ActivitiesService {
             .lean()
             .exec();
         if (!updated) throw new NotFoundException('Activity not found');
-        return updated;
+        return this.ensureYear(updated);
     }
 
     async remove(id: string, currentUser: Record<string, any>) {
@@ -141,6 +164,7 @@ export class ActivitiesService {
 
     async regenerateInvitations(id: string, currentUser: Record<string, any>) {
         const activity = await this.findOneOrFail(id);
+        this.assertInvitationsNotLocked(activity, new Date());
         const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
         await this.assertCanRegenerateInvitations(activity, currentUser, userTown);
 
@@ -156,7 +180,7 @@ export class ActivitiesService {
             .lean()
             .exec();
         if (!updated) throw new NotFoundException('Activity not found');
-        return updated;
+        return this.ensureYear(updated);
     }
 
     async overrideInvitations(
@@ -165,6 +189,7 @@ export class ActivitiesService {
         currentUser: Record<string, any>,
     ) {
         const activity = await this.findOneOrFail(id);
+        this.assertInvitationsNotLocked(activity, new Date());
         await this.assertCanRead(activity, currentUser);
         this.assertCanOverrideInvitations(activity, currentUser);
 
@@ -187,7 +212,17 @@ export class ActivitiesService {
             .lean()
             .exec();
         if (!updated) throw new NotFoundException('Activity not found');
-        return updated;
+        return this.ensureYear(updated);
+    }
+
+    private assertInvitationsNotLocked(activity: Record<string, any>, now: Date) {
+        const end = new Date(activity.endDate);
+        const nowKey = startOfDayKey(now);
+        const endKey = startOfDayKey(end);
+
+        if (nowKey > endKey || now > end) {
+            throw new ForbiddenException('Invitations are locked after activity ends');
+        }
     }
 
     async getInvitedChildrenDetails(activityId: string, currentUser: Record<string, any>) {
@@ -362,6 +397,48 @@ export class ActivitiesService {
             typeof x === 'string' ? new Types.ObjectId(x) : (x as Types.ObjectId),
         );
 
+        const enrichFlaggedChildren = async (rows: Array<{ userId: string; reason: string }>) => {
+            if (!rows.length) return [];
+
+            const mapping = await this.getAgeToGroupMapping();
+            const ids = rows.map((r) => new Types.ObjectId(r.userId));
+            const users = await this.userModel
+                .find({ _id: { $in: ids } })
+                .select({ _id: 1, fullName: 1, dateOfBirth: 1, profileImage: 1 })
+                .lean()
+                .exec();
+
+            const byId = new Map<
+                string,
+                { fullName?: string; dateOfBirth?: Date; profileImageUrl?: string }
+            >();
+            for (const u of users) {
+                byId.set(String(u._id), {
+                    fullName: u.fullName,
+                    dateOfBirth: u.dateOfBirth ? new Date(u.dateOfBirth) : undefined,
+                    profileImageUrl: (u as any).profileImage?.url,
+                });
+            }
+
+            return rows.map((r) => {
+                const u = byId.get(r.userId);
+                const group = u?.dateOfBirth
+                    ? computeGroupFromAge(
+                          computeAgeYears(u.dateOfBirth, conferenceStart),
+                          mapping.bands,
+                      )
+                    : undefined;
+
+                return {
+                    userId: r.userId,
+                    fullName: u?.fullName ?? 'Unknown child',
+                    group,
+                    profileImageUrl: u?.profileImageUrl,
+                    reason: r.reason,
+                };
+            });
+        };
+
         if (!invitedIds.length) {
             return {
                 activityId,
@@ -384,6 +461,11 @@ export class ActivitiesService {
             .exec();
 
         if (!candidateActivities.length) {
+            const baseFlagged = invitedIds.map((idObj) => ({
+                userId: String(idObj),
+                reason: 'No qualifying activity attendance in last 3 months',
+            }));
+            const flaggedChildren = await enrichFlaggedChildren(baseFlagged);
             return {
                 activityId,
                 windowStart,
@@ -391,10 +473,7 @@ export class ActivitiesService {
                 invitedCount: invitedIds.length,
                 qualifiedCount: 0,
                 flaggedCount: invitedIds.length,
-                flaggedChildren: invitedIds.map((idObj) => ({
-                    userId: String(idObj),
-                    reason: 'No qualifying activity attendance in last 3 months',
-                })),
+                flaggedChildren,
             };
         }
 
@@ -498,14 +577,16 @@ export class ActivitiesService {
                 reason: 'No qualifying activity attendance in last 3 months',
             }));
 
+        const enrichedFlagged = await enrichFlaggedChildren(flaggedChildren);
+
         return {
             activityId,
             windowStart,
             windowEnd: conferenceStart,
             invitedCount: invitedIds.length,
             qualifiedCount: qualified.size,
-            flaggedCount: flaggedChildren.length,
-            flaggedChildren,
+            flaggedCount: enrichedFlagged.length,
+            flaggedChildren: enrichedFlagged,
         };
     }
 
@@ -538,7 +619,10 @@ export class ActivitiesService {
             throw new ForbiddenException('Monitor town not set');
         }
 
+        const year = getDatePartsInTimeZone(startDate).year;
+
         return {
+            year,
             type,
             town,
             startDate,
@@ -599,11 +683,28 @@ export class ActivitiesService {
         if (dto.town !== undefined) payload.town = merged.town;
         if (dto.startDate !== undefined) payload.startDate = merged.startDate;
         if (dto.endDate !== undefined) payload.endDate = merged.endDate;
+        if (dto.startDate !== undefined) {
+            payload.year = getDatePartsInTimeZone(merged.startDate).year;
+        }
         if (dto.conferenceDurationDays !== undefined)
             payload.conferenceDurationDays = merged.conferenceDurationDays;
         if (dto.targetingCode !== undefined) payload.targetingCode = merged.targetingCode;
         if (dto.notes !== undefined) payload.notes = merged.notes;
         return payload;
+    }
+
+    private ensureYear(activity: Record<string, any>): Record<string, any> {
+        const start = activity.startDate ? new Date(activity.startDate) : new Date();
+        const year =
+            typeof activity.year === 'number' && Number.isFinite(activity.year)
+                ? activity.year
+                : getDatePartsInTimeZone(start).year;
+
+        const end = activity.endDate ? new Date(activity.endDate) : start;
+        const now = new Date();
+        const ended = startOfDayKey(now) > startOfDayKey(end) || now > end;
+
+        return { ...activity, year, ended };
     }
 
     private async assertCanCreate(

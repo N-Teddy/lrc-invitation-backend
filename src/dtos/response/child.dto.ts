@@ -51,3 +51,22 @@ export class ChildrenListResponseDto {
     @ApiProperty({ description: 'Count of children in scope missing profile image.' })
     missingProfileImageCount: number;
 }
+
+export class ChildGroupCountDto {
+    @ApiProperty({ enum: ChildGroup })
+    group: ChildGroup;
+
+    @ApiProperty()
+    count: number;
+}
+
+export class ChildrenGroupCountsResponseDto {
+    @ApiProperty()
+    total: number;
+
+    @ApiProperty({ type: [ChildGroupCountDto] })
+    counts: ChildGroupCountDto[];
+
+    @ApiProperty({ description: 'Children missing a computed/stored group.' })
+    unknownCount: number;
+}

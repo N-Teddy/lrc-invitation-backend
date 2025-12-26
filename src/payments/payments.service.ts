@@ -15,6 +15,7 @@ import { Payment, PaymentDocument } from '../schema/payment.schema';
 import { User, UserDocument } from '../schema/user.schema';
 import { NotificationService } from '../notifications/notifications.service';
 import { AppConfigService } from '../config/app-config.service';
+import { TownScopeService } from '../common/services/town-scope.service';
 
 interface MonitorYearState {
     totalPaid: number;
@@ -30,15 +31,20 @@ export class PaymentsService {
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
         private readonly notificationService: NotificationService,
         private readonly config: AppConfigService,
+        private readonly townScopeService: TownScopeService,
     ) {}
 
     async create(dto: CreatePaymentDto, currentUser: Record<string, any>) {
         this.ensureMonitor(currentUser, dto.monitorUserId);
+        const town = await this.resolveTownOrFail(currentUser);
 
         const monitor = await this.userModel.findById(dto.monitorUserId).lean().exec();
         if (!monitor) throw new NotFoundException('Monitor not found');
         if (monitor.role !== UserRole.Monitor)
             throw new BadRequestException('User is not a monitor');
+        if (((monitor.originTown as Town | undefined) ?? Town.Yaounde) !== town) {
+            throw new ForbiddenException('Not allowed to record contributions for other towns');
+        }
 
         const paidAt = new Date(dto.paidAt);
         if (Number.isNaN(paidAt.getTime())) throw new BadRequestException('Invalid paidAt');
@@ -48,7 +54,7 @@ export class PaymentsService {
         const created = await new this.paymentModel({
             monitorUserId: new Types.ObjectId(dto.monitorUserId),
             year: dto.year,
-            town: (monitor.originTown as Town) ?? Town.Yaounde,
+            town,
             amountFcfa: dto.amountFcfa,
             paidAt,
             recordedByUserId: recordedByUserId
@@ -62,11 +68,12 @@ export class PaymentsService {
 
     async findAll(query: PaymentsQueryDto, currentUser: Record<string, any>) {
         this.assertSuper(currentUser);
+        const town = await this.resolveTownOrFail(currentUser);
 
         const filter: Record<string, any> = {};
         if (query.monitorUserId) filter.monitorUserId = new Types.ObjectId(query.monitorUserId);
         if (query.year) filter.year = query.year;
-        if (query.town) filter.town = query.town;
+        filter.town = town;
 
         return this.paymentModel.find(filter).sort({ paidAt: -1 }).lean().exec();
     }
@@ -104,9 +111,16 @@ export class PaymentsService {
             throw new ForbiddenException('Not allowed');
         }
 
+        const town = await this.resolveTownOrFail(currentUser);
         const user = await this.userModel.findById(monitorUserId).lean().exec();
         if (!user) throw new NotFoundException('Monitor not found');
         if (user.role !== UserRole.Monitor) throw new BadRequestException('User is not a monitor');
+        if (!isSelf) {
+            const userTown = (user.originTown as Town | undefined) ?? Town.Yaounde;
+            if (userTown !== town) {
+                throw new ForbiddenException('Not allowed to view other towns');
+            }
+        }
 
         const totals = await this.aggregateMonitorTotals(monitorUserId, year);
         const state = this.computeYearState(year, totals);
@@ -125,9 +139,10 @@ export class PaymentsService {
 
     async yearlyOverview(year: number, currentUser: Record<string, any>) {
         this.assertSuper(currentUser);
+        const town = await this.resolveTownOrFail(currentUser);
 
         const monitors = await this.userModel
-            .find({ role: UserRole.Monitor })
+            .find({ role: UserRole.Monitor, originTown: town })
             .select({ _id: 1, originTown: 1 })
             .lean()
             .exec();
@@ -148,7 +163,6 @@ export class PaymentsService {
             const effective = state.effectivePaid;
             totalEffectivePaid += effective;
 
-            const town = (monitor.originTown as Town | undefined) ?? Town.Yaounde;
             if (!byTownMap.has(town)) {
                 byTownMap.set(town, {
                     town,
@@ -201,6 +215,13 @@ export class PaymentsService {
 
     async update(id: string, dto: UpdatePaymentDto, currentUser: Record<string, any>) {
         this.assertSuper(currentUser);
+        const town = await this.resolveTownOrFail(currentUser);
+
+        const existing = await this.paymentModel.findById(id).lean().exec();
+        if (!existing) throw new NotFoundException('Payment not found');
+        if (((existing as any).town as Town | undefined) !== town) {
+            throw new ForbiddenException('Not allowed to edit other towns');
+        }
 
         const update: Record<string, any> = {};
         if (dto.monitorUserId) {
@@ -208,8 +229,11 @@ export class PaymentsService {
             if (!monitor) throw new NotFoundException('Monitor not found');
             if (monitor.role !== UserRole.Monitor)
                 throw new BadRequestException('User is not a monitor');
+            if (((monitor.originTown as Town | undefined) ?? Town.Yaounde) !== town) {
+                throw new ForbiddenException('Not allowed to record contributions for other towns');
+            }
             update.monitorUserId = new Types.ObjectId(dto.monitorUserId);
-            update.town = (monitor.originTown as Town) ?? Town.Yaounde;
+            update.town = town;
         }
         if (dto.year !== undefined) update.year = dto.year;
         if (dto.amountFcfa !== undefined) update.amountFcfa = dto.amountFcfa;
@@ -229,13 +253,26 @@ export class PaymentsService {
 
     async remove(id: string, currentUser: Record<string, any>) {
         this.assertSuper(currentUser);
-        const deleted = await this.paymentModel.findByIdAndDelete(id).lean().exec();
-        if (!deleted) throw new NotFoundException('Payment not found');
+        const town = await this.resolveTownOrFail(currentUser);
+
+        const payment = await this.paymentModel.findById(id).lean().exec();
+        if (!payment) throw new NotFoundException('Payment not found');
+        if (((payment as any).town as Town | undefined) !== town) {
+            throw new ForbiddenException('Not allowed to delete other towns');
+        }
+
+        await this.paymentModel.findByIdAndDelete(id).exec();
         return { deleted: true };
     }
 
     private isSuper(user: Record<string, any>) {
         return user?.role === UserRole.Monitor && user?.monitorLevel === MonitorLevel.Super;
+    }
+
+    private async resolveTownOrFail(currentUser: Record<string, any>): Promise<Town> {
+        const town = await this.townScopeService.resolveMonitorTown(currentUser);
+        if (!town) throw new ForbiddenException('Monitor town not set');
+        return town;
     }
 
     private assertSuper(user: Record<string, any>) {

@@ -36,11 +36,15 @@ export class ActivitiesController {
     findAll(
         @Query('town') town?: Town,
         @Query('type') type?: ActivityType,
+        @Query('year') year?: string,
         @Query('from') from?: string,
         @Query('to') to?: string,
         @CurrentUser() currentUser?: any,
     ) {
-        return this.activitiesService.findAll({ town, type, from, to }, currentUser);
+        return this.activitiesService.findAll(
+            { town, type, year: year ? Number(year) : undefined, from, to },
+            currentUser,
+        );
     }
 
     @Roles([UserRole.Monitor])

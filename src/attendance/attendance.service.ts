@@ -15,7 +15,7 @@ import { AttendanceRoleAtTime, ClassificationLabel } from '../common/enums/atten
 import { ActivityType, ChildGroup, TargetingCode, Town } from '../common/enums/activity.enum';
 import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { AgeBand } from '../common/constants/groups.constants';
-import { computeAgeYears } from '../common/utils/groups.util';
+import { computeAgeYears, startOfDayKey } from '../common/utils/groups.util';
 import { computeGroupFromAge } from '../common/utils/age-group.util';
 import { isEligibleChildForActivity } from '../common/utils/attendance-eligibility.util';
 import { ReportingService } from '../reporting/reporting.service';
@@ -90,16 +90,28 @@ export class AttendanceService {
             .lean()
             .exec();
 
-        this.assertNotLocked(activity, resolvedScopeTown, now, existing);
+        this.assertNotLocked(activity, now);
 
         const allowedLabels = (await this.settingsService.getClassificationLabels())
             .labels as ClassificationLabel[];
 
-        const uniqueEntries = new Map<string, { present: boolean }>();
+        const normalizeDonationFcfa = (value: unknown): number | undefined => {
+            if (value === null || value === undefined) return undefined;
+            const n = Number(value);
+            if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+                throw new BadRequestException('Invalid donationFcfa');
+            }
+            return n > 0 ? n : undefined;
+        };
+
+        const uniqueEntries = new Map<string, { present: boolean; donationFcfa?: number }>();
         for (const entry of dto.entries ?? []) {
             if (!entry?.userId) continue;
             if (entry.present !== true) continue; // present-only: do not record absences
-            uniqueEntries.set(entry.userId, { present: true });
+            uniqueEntries.set(entry.userId, {
+                present: true,
+                donationFcfa: normalizeDonationFcfa((entry as any).donationFcfa),
+            });
         }
 
         const userIds = [...uniqueEntries.keys()];
@@ -244,6 +256,7 @@ export class AttendanceService {
             entries.push({
                 userId: new Types.ObjectId(userId),
                 present: true,
+                donationFcfa: input.donationFcfa,
                 roleAtTime,
                 originTownAtTime: userTownAtTime,
                 groupAtTime,
@@ -254,7 +267,7 @@ export class AttendanceService {
         const externalInput = dto.externalEntries ?? [];
         const externalById = new Map<
             string,
-            { fullName: string; classificationLabel: ClassificationLabel }
+            { fullName: string; classificationLabel: ClassificationLabel; donationFcfa?: number }
         >();
         for (const x of externalInput) {
             if (!x) continue;
@@ -266,13 +279,18 @@ export class AttendanceService {
             const fullName = String(x.fullName ?? '').trim();
             if (!externalId) continue;
             if (!fullName || fullName.length < 2) continue;
-            externalById.set(externalId, { fullName, classificationLabel: label });
+            externalById.set(externalId, {
+                fullName,
+                classificationLabel: label,
+                donationFcfa: normalizeDonationFcfa((x as any).donationFcfa),
+            });
         }
 
         const externalEntries = [...externalById.entries()].map(([externalId, value]) => ({
             externalId,
             fullName: value.fullName,
             classificationLabel: value.classificationLabel,
+            donationFcfa: value.donationFcfa,
             ...(activity.type === ActivityType.Conference && resolvedScopeTown
                 ? { scopeTown: resolvedScopeTown }
                 : {}),
@@ -380,12 +398,27 @@ export class AttendanceService {
                 .map((e: any) => String(e.userId)),
         );
 
+        const donationByUserId = new Map<string, number>();
+        for (const e of relevantAttendanceEntries) {
+            if (e?.present !== true) continue;
+            const amount = Number((e as any).donationFcfa);
+            if (!Number.isFinite(amount) || amount <= 0) continue;
+            donationByUserId.set(String(e.userId), Math.floor(amount));
+        }
+
         const relevantExternalEntries =
             activity.type === ActivityType.Conference && resolvedScopeTown
                 ? ((attendance as any)?.externalEntries ?? []).filter(
                       (x: any) => (x.scopeTown as Town | undefined) === resolvedScopeTown,
                   )
                 : ((attendance as any)?.externalEntries ?? []);
+
+        const donationByExternalId = new Map<string, number>();
+        for (const x of relevantExternalEntries ?? []) {
+            const amount = Number((x as any).donationFcfa);
+            if (!Number.isFinite(amount) || amount <= 0) continue;
+            donationByExternalId.set(String(x.externalId), Math.floor(amount));
+        }
 
         const mapping = await this.getAgeToGroupMapping();
         const asOf = activity.startDate ? new Date(activity.startDate) : new Date();
@@ -462,6 +495,7 @@ export class AttendanceService {
                     group,
                     profileImageUrl: (u?.profileImage?.url as string | undefined) ?? undefined,
                     present: presentUserIds.has(String(u._id)),
+                    donationFcfa: donationByUserId.get(String(u._id)),
                     classificationLabel: this.classificationForChildGroup(group),
                 };
             })
@@ -476,13 +510,15 @@ export class AttendanceService {
                     role: AttendanceRoleAtTime.Monitor,
                     profileImageUrl: (u?.profileImage?.url as string | undefined) ?? undefined,
                     present: presentUserIds.has(String(u._id)),
+                    donationFcfa: donationByUserId.get(String(u._id)),
                     classificationLabel: ClassificationLabel.Monitor,
                 };
             })
             .sort((a: any, b: any) => a.fullName.localeCompare(b.fullName));
 
         const now = new Date();
-        const locked = this.isLocked(activity, resolvedScopeTown, now, attendance);
+        const lockReason = this.getLockReason(activity, now);
+        const locked = !!lockReason;
 
         const externalParticipants = (relevantExternalEntries ?? []).map((x: any) => ({
             userId: `external:${String(x.externalId)}`,
@@ -490,6 +526,7 @@ export class AttendanceService {
             role: 'external',
             classificationLabel: x.classificationLabel as ClassificationLabel,
             present: true,
+            donationFcfa: donationByExternalId.get(String(x.externalId)),
         }));
 
         return {
@@ -502,7 +539,7 @@ export class AttendanceService {
             scopeTown: activity.type === ActivityType.Conference ? resolvedScopeTown : undefined,
             takenAt: attendance?.takenAt ? new Date(attendance.takenAt) : undefined,
             locked,
-            lockReason: locked ? 'Attendance is locked after activity ends' : undefined,
+            lockReason,
             classificationLabels: allowedLabels,
             participants: [...children, ...monitorRoster, ...externalParticipants].sort((a, b) =>
                 a.fullName.localeCompare(b.fullName),
@@ -511,6 +548,7 @@ export class AttendanceService {
                 externalId: String(x.externalId),
                 fullName: String(x.fullName),
                 classificationLabel: x.classificationLabel as ClassificationLabel,
+                donationFcfa: donationByExternalId.get(String(x.externalId)),
             })),
         };
     }
@@ -652,40 +690,30 @@ export class AttendanceService {
         return userTown;
     }
 
-    private isLocked(
-        activity: Record<string, any>,
-        scopeTown: Town | undefined,
-        now: Date,
-        existing: Record<string, any> | undefined | null,
-    ) {
-        if (now <= new Date(activity.endDate)) return false;
+    private getLockReason(activity: Record<string, any>, now: Date): string | undefined {
+        const start = new Date(activity.startDate);
+        const end = new Date(activity.endDate);
 
-        const entries = existing?.entries ?? [];
-        const externalEntries = (existing as any)?.externalEntries ?? [];
+        const nowKey = startOfDayKey(now);
+        const startKey = startOfDayKey(start);
+        const endKey = startOfDayKey(end);
 
-        if (activity.type !== ActivityType.Conference) {
-            return !!entries.length || !!externalEntries.length;
+        if (nowKey < startKey) {
+            return 'Attendance can only be taken on the day(s) of the activity';
         }
-
-        if (!scopeTown) return true;
-
-        const hasScopedEntries = entries.some(
-            (e: any) => (e.originTownAtTime as Town | undefined) === scopeTown,
-        );
-        const hasScopedExternal = externalEntries.some(
-            (x: any) => (x.scopeTown as Town | undefined) === scopeTown,
-        );
-        return hasScopedEntries || hasScopedExternal;
+        if (nowKey > endKey) {
+            return 'Attendance is locked after activity ends';
+        }
+        if (now > end) {
+            return 'Attendance is locked after activity ends';
+        }
+        return undefined;
     }
 
-    private assertNotLocked(
-        activity: Record<string, any>,
-        scopeTown: Town | undefined,
-        now: Date,
-        existing: Record<string, any> | undefined | null,
-    ) {
-        if (!this.isLocked(activity, scopeTown, now, existing)) return;
-        throw new ForbiddenException('Attendance is locked after activity ends');
+    private assertNotLocked(activity: Record<string, any>, now: Date) {
+        const reason = this.getLockReason(activity, now);
+        if (!reason) return;
+        throw new ForbiddenException(reason);
     }
 
     private async listMonitorsForTown(town: Town) {

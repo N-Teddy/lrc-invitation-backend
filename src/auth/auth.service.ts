@@ -188,6 +188,37 @@ export class AuthService {
         return { message: safeMessage };
     }
 
+    getAuthMode() {
+        return { mode: this.config.authMode };
+    }
+
+    async directEmailLogin(email: string) {
+        if (this.config.authMode !== 'direct_email') {
+            throw new BadRequestException('Direct email login is disabled');
+        }
+        if (!email) throw new BadRequestException('Email is required');
+
+        const normalizedEmail = email.toLowerCase();
+        const user = await this.usersService.findByEmail(normalizedEmail);
+        if (
+            !user ||
+            user.role !== UserRole.Monitor ||
+            user.lifecycleStatus !== LifecycleStatus.Active
+        ) {
+            throw new UnauthorizedException('Invalid credentials');
+        }
+        if (user.registrationPendingApproval) {
+            throw new UnauthorizedException('Awaiting approval');
+        }
+
+        const { accessToken, refreshToken } = await this.generateTokens(
+            user.id,
+            user.role,
+            user.monitorLevel,
+        );
+        return { accessToken, refreshToken };
+    }
+
     async exchangeMagicLink(token: string) {
         const user = await this.usersService.findByMagicTokenForAuth(token);
         if (!user || !user.magicExpiresAt || user.magicExpiresAt.getTime() < Date.now()) {
