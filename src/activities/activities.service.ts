@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
     CreateActivityDto,
+    BulkCreateActivitiesDto,
     UpdateActivityDto,
     UpdateActivityInvitationsDto,
 } from '../dtos/request/activity.dto';
@@ -67,6 +68,51 @@ export class ActivitiesService {
             invitedMonitorUserIds,
         }).save();
         return this.ensureYear(created.toObject());
+    }
+
+    async bulkCreate(dto: BulkCreateActivitiesDto, currentUser: Record<string, any>) {
+        if (!dto.activities?.length) {
+            throw new BadRequestException('At least one activity is required');
+        }
+
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        const isLockedYear = await this.settingsService.isActivityYearLocked(dto.year);
+
+        const normalized: Array<{
+            item: CreateActivityDto;
+            payload: ReturnType<ActivitiesService['normalizeCreatePayload']>;
+            reason?: string;
+        }> = [];
+
+        for (const item of dto.activities) {
+            await this.assertCanCreate(item, currentUser, userTown);
+            const payload = this.normalizeCreatePayload(item, currentUser, userTown);
+            if (payload.year !== dto.year) {
+                throw new BadRequestException('All activities must be in the selected year');
+            }
+            const reason = item.reason?.trim();
+            if (isLockedYear && !reason) {
+                throw new BadRequestException(
+                    'Reason is required to add activities to a locked year',
+                );
+            }
+            normalized.push({ item, payload, reason });
+        }
+
+        const created: Activity[] = [];
+        for (const { payload, reason } of normalized) {
+            const activityPayload = { ...payload, createdReason: reason || undefined };
+            const { invitedChildrenUserIds, invitedMonitorUserIds } =
+                await this.computeInvitations(activityPayload);
+            const record = await new this.activityModel({
+                ...activityPayload,
+                invitedChildrenUserIds,
+                invitedMonitorUserIds,
+            }).save();
+            created.push(this.ensureYear(record.toObject()) as Activity);
+        }
+
+        return created;
     }
 
     async findAll(

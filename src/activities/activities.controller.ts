@@ -6,6 +6,7 @@ import { ActivityType, Town } from '../common/enums/activity.enum';
 import { MonitorLevel, UserRole } from '../common/enums/user.enum';
 import {
     CreateActivityDto,
+    BulkCreateActivitiesDto,
     UpdateActivityDto,
     UpdateActivityInvitationsDto,
 } from '../dtos/request/activity.dto';
@@ -28,6 +29,13 @@ export class ActivitiesController {
     @ApiCreatedResponse({ type: ActivityResponseDto })
     create(@Body() dto: CreateActivityDto, @CurrentUser() currentUser: any) {
         return this.activitiesService.create(dto, currentUser);
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])
+    @Post('bulk')
+    @ApiCreatedResponse({ type: [ActivityResponseDto] })
+    bulkCreate(@Body() dto: BulkCreateActivitiesDto, @CurrentUser() currentUser: any) {
+        return this.activitiesService.bulkCreate(dto, currentUser);
     }
 
     @Roles([UserRole.Monitor])

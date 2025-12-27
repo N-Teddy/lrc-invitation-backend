@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
     IsArray,
     IsDateString,
@@ -6,7 +7,9 @@ import {
     IsMongoId,
     IsOptional,
     IsString,
+    IsInt,
     Min,
+    ValidateNested,
 } from 'class-validator';
 import { ActivityType, TargetingCode, Town } from '../../common/enums/activity.enum';
 
@@ -67,4 +70,17 @@ export class UpdateActivityInvitationsDto {
     @IsMongoId({ each: true })
     @IsOptional()
     invitedMonitorUserIds?: string[];
+}
+
+export class BulkCreateActivitiesDto {
+    @ApiProperty({ description: 'Target year for the batch.' })
+    @IsInt()
+    @Min(2000)
+    year: number;
+
+    @ApiProperty({ type: [CreateActivityDto] })
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => CreateActivityDto)
+    activities: CreateActivityDto[];
 }
