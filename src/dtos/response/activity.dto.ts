@@ -50,3 +50,19 @@ export class ActivityResponseDto {
     @ApiPropertyOptional()
     updatedAt?: Date;
 }
+
+export class BulkCreateActivityFailureDto {
+    @ApiProperty()
+    index: number;
+
+    @ApiProperty()
+    reason: string;
+}
+
+export class BulkCreateActivitiesResponseDto {
+    @ApiProperty({ type: [ActivityResponseDto] })
+    created: ActivityResponseDto[];
+
+    @ApiProperty({ type: [BulkCreateActivityFailureDto] })
+    failed: BulkCreateActivityFailureDto[];
+}
