@@ -78,41 +78,40 @@ export class ActivitiesService {
         const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
         const isLockedYear = await this.settingsService.isActivityYearLocked(dto.year);
 
-        const normalized: Array<{
-            item: CreateActivityDto;
-            payload: ReturnType<ActivitiesService['normalizeCreatePayload']>;
-            reason?: string;
-        }> = [];
-
-        for (const item of dto.activities) {
-            await this.assertCanCreate(item, currentUser, userTown);
-            const payload = this.normalizeCreatePayload(item, currentUser, userTown);
-            if (payload.year !== dto.year) {
-                throw new BadRequestException('All activities must be in the selected year');
-            }
-            const reason = item.reason?.trim();
-            if (isLockedYear && !reason) {
-                throw new BadRequestException(
-                    'Reason is required to add activities to a locked year',
-                );
-            }
-            normalized.push({ item, payload, reason });
-        }
-
         const created: Activity[] = [];
-        for (const { payload, reason } of normalized) {
-            const activityPayload = { ...payload, createdReason: reason || undefined };
-            const { invitedChildrenUserIds, invitedMonitorUserIds } =
-                await this.computeInvitations(activityPayload);
-            const record = await new this.activityModel({
-                ...activityPayload,
-                invitedChildrenUserIds,
-                invitedMonitorUserIds,
-            }).save();
-            created.push(this.ensureYear(record.toObject()) as Activity);
+        const failed: Array<{ index: number; reason: string }> = [];
+
+        for (const [index, item] of dto.activities.entries()) {
+            try {
+                await this.assertCanCreate(item, currentUser, userTown);
+                const payload = this.normalizeCreatePayload(item, currentUser, userTown);
+                if (payload.year !== dto.year) {
+                    throw new BadRequestException('All activities must be in the selected year');
+                }
+                const reason = item.reason?.trim();
+                if (isLockedYear && !reason) {
+                    throw new BadRequestException(
+                        'Reason is required to add activities to a locked year',
+                    );
+                }
+
+                const activityPayload = { ...payload, createdReason: reason || undefined };
+                const { invitedChildrenUserIds, invitedMonitorUserIds } =
+                    await this.computeInvitations(activityPayload);
+                const record = await new this.activityModel({
+                    ...activityPayload,
+                    invitedChildrenUserIds,
+                    invitedMonitorUserIds,
+                }).save();
+                created.push(this.ensureYear(record.toObject()) as Activity);
+            } catch (err) {
+                const message =
+                    err instanceof Error ? err.message : 'Failed to create activity';
+                failed.push({ index, reason: message });
+            }
         }
 
-        return created;
+        return { created, failed };
     }
 
     async findAll(

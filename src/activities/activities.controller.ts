@@ -10,7 +10,10 @@ import {
     UpdateActivityDto,
     UpdateActivityInvitationsDto,
 } from '../dtos/request/activity.dto';
-import { ActivityResponseDto } from '../dtos/response/activity.dto';
+import {
+    ActivityResponseDto,
+    BulkCreateActivitiesResponseDto,
+} from '../dtos/response/activity.dto';
 import {
     ActivityEligibleChildrenResponseDto,
     ActivityInvitedChildrenResponseDto,
@@ -33,7 +36,7 @@ export class ActivitiesController {
 
     @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])
     @Post('bulk')
-    @ApiCreatedResponse({ type: [ActivityResponseDto] })
+    @ApiCreatedResponse({ type: BulkCreateActivitiesResponseDto })
     bulkCreate(@Body() dto: BulkCreateActivitiesDto, @CurrentUser() currentUser: any) {
         return this.activitiesService.bulkCreate(dto, currentUser);
     }
