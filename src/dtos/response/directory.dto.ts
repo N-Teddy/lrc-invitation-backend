@@ -17,4 +17,7 @@ export class MonitorDirectoryResponseDto {
 
     @ApiPropertyOptional()
     profileImageUrl?: string;
+
+    @ApiPropertyOptional()
+    dateOfBirth?: Date;
 }

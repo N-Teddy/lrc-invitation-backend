@@ -7,6 +7,7 @@ export const SETTINGS_KEYS = {
     MediaStorage: 'mediaStorage',
     ActivityYearLocks: 'activityYearLocks',
     AuthMode: 'authMode',
+    EmailTemplateTheme: 'emailTemplateTheme',
 } as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[keyof typeof SETTINGS_KEYS];

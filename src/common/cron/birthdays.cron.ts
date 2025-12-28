@@ -6,7 +6,7 @@ import { BirthdaysService } from '../../birthdays/birthdays.service';
 export class BirthdaysCron implements OnModuleInit {
     private readonly logger = new Logger(BirthdaysCron.name);
 
-    constructor(private readonly birthdaysService: BirthdaysService) {}
+    constructor(private readonly birthdaysService: BirthdaysService) { }
 
     onModuleInit() {
         scheduleNextDailyRun(

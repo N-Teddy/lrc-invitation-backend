@@ -1,32 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Approval needed</title>
-</head>
-<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-  <h2 style="margin-bottom: 8px;">Hello {{approverName}},</h2>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{subject}}</title>
+  </head>
+  <body style="margin:0;padding:0;background:{{theme.bg}};font-family:'Segoe UI', Arial, sans-serif;color:{{theme.text}};">
+    <div style="padding:24px 16px;">
+      <div style="max-width:640px;margin:0 auto;">
+        <div style="border:1px solid {{theme.border}};background:{{theme.surface}};border-radius:18px;overflow:hidden;box-shadow:0 12px 24px rgba(15,23,42,0.08);">
+          <div style="height:4px;background:{{theme.primary}};"></div>
+          <div style="padding:18px 22px;background:{{theme.surface2}};border-bottom:1px solid {{theme.border}};">
+            <div style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:{{theme.muted}};">{{brandName}}</div>
+            <div style="margin-top:6px;font-size:20px;font-weight:700;">Approval needed</div>
+          </div>
+          <div style="padding:20px 22px;font-size:14px;line-height:1.6;">
+            <div style="font-weight:600;margin-bottom:6px;">Hello {{approverName}},</div>
+            <div>A new monitor registration is awaiting your approval.</div>
 
-  <p style="margin-top: 0;">
-    A new monitor registration is awaiting your approval.
-  </p>
+            <div style="margin:14px 0;padding:12px 14px;border:1px solid {{theme.border}};border-radius:12px;background:{{theme.surface2}};">
+              <div><strong>Name:</strong> {{registrantName}}</div>
+              <div><strong>Email:</strong> {{registrantEmail}}</div>
+              <div><strong>Town:</strong> {{town}}</div>
+            </div>
 
-  <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;background:#f9fafb;">
-    <p style="margin:0 0 8px;"><strong>Name:</strong> {{registrantName}}</p>
-    <p style="margin:0 0 8px;"><strong>Email:</strong> {{registrantEmail}}</p>
-    <p style="margin:0;"><strong>Town:</strong> {{town}}</p>
-  </div>
-
-  <p style="margin: 16px 0;">
-    <a href="{{approvalsUrl}}" style="background:#2563eb;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;">
-      Open approvals
-    </a>
-  </p>
-
-  <p>If the button does not work, copy and paste this URL into your browser:</p>
-  <p style="word-break: break-all;">{{approvalsUrl}}</p>
-
-  <p style="margin-top:24px;">Thank you,<br/>LRC Jeunesse</p>
-</body>
+            {{#if actionsHtml}}
+              <div style="margin:16px 0 6px;">
+                {{actionsHtml}}
+              </div>
+            {{else}}
+              {{#if approvalsUrl}}
+                <div style="margin:16px 0;">
+                  <a href="{{approvalsUrl}}" style="display:inline-block;background:{{theme.primary}};color:#fff;padding:10px 16px;text-decoration:none;border-radius:999px;font-weight:600;font-size:12px;">Open approvals</a>
+                </div>
+                <div style="font-size:12px;color:{{theme.muted}};">If the button does not work, copy and paste this URL into your browser:</div>
+                <div style="margin-top:6px;word-break:break-all;font-size:12px;color:{{theme.text}};">{{approvalsUrl}}</div>
+              {{/if}}
+            {{/if}}
+          </div>
+          <div style="padding:16px 22px;border-top:1px solid {{theme.border}};font-size:12px;color:{{theme.muted}};">
+            <div>Need help? Reply to this email.</div>
+            <div style="margin-top:8px;">— {{brandName}}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
 </html>
-

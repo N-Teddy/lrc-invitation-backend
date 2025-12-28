@@ -1,48 +1,56 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>{{subject}}</title>
-</head>
-<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-  <h2 style="margin-bottom: 8px;">{{subject}}</h2>
-  <p style="margin-top: 0;">
-    Bulk child creation completed.
-  </p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{subject}}</title>
+  </head>
+  <body style="margin:0;padding:0;background:{{theme.bg}};font-family:'Segoe UI', Arial, sans-serif;color:{{theme.text}};">
+    <div style="padding:24px 16px;">
+      <div style="max-width:640px;margin:0 auto;">
+        <div style="border:1px solid {{theme.border}};background:{{theme.surface}};border-radius:18px;overflow:hidden;box-shadow:0 12px 24px rgba(15,23,42,0.08);">
+          <div style="height:4px;background:{{theme.primary}};"></div>
+          <div style="padding:18px 22px;background:{{theme.surface2}};border-bottom:1px solid {{theme.border}};">
+            <div style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:{{theme.muted}};">{{brandName}}</div>
+            <div style="margin-top:6px;font-size:20px;font-weight:700;">{{headline}}</div>
+          </div>
+          <div style="padding:20px 22px;font-size:14px;line-height:1.6;">
+            <div>Bulk child creation completed.</div>
 
-  <div style="margin: 12px 0; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px;">
-    <div><strong>Town:</strong> {{town}}</div>
-    <div><strong>Created:</strong> {{totalCreated}}</div>
-  </div>
+            <div style="margin:14px 0;padding:12px 14px;border:1px solid {{theme.border}};border-radius:12px;background:{{theme.surface2}};">
+              <div><strong>Town:</strong> {{town}}</div>
+              <div><strong>Created:</strong> {{totalCreated}}</div>
+            </div>
 
-  {{#if sampleNames}}
-    <p style="margin: 12px 0 6px;"><strong>Sample (first {{sampleNames.length}}):</strong></p>
-    <ul style="margin-top: 6px;">
-      {{#each sampleNames}}
-        <li>{{this}}</li>
-      {{/each}}
-    </ul>
-  {{/if}}
+            {{#if sampleNames}}
+              <div style="margin:10px 0 4px;font-size:12px;color:{{theme.muted}};">Sample (first entries)</div>
+              <div style="font-size:13px;">{{sampleNames}}</div>
+            {{/if}}
 
-  {{#if actionsHtml}}
-    <div style="margin: 16px 0;">
-      {{actionsHtml}}
+            {{#if actionsHtml}}
+              <div style="margin:16px 0 6px;">
+                {{actionsHtml}}
+              </div>
+              {{#if actionsText}}
+                <div style="margin-top:8px;font-size:12px;color:{{theme.muted}};">If the button does not work, copy and paste a URL into your browser:</div>
+                <pre style="margin:8px 0 0;white-space:pre-wrap;word-break:break-word;font-size:12px;color:{{theme.text}};">{{actionsText}}</pre>
+              {{/if}}
+            {{else}}
+              {{#if listUrl}}
+                <div style="margin:16px 0;">
+                  <a href="{{listUrl}}" style="display:inline-block;background:{{theme.primary}};color:#fff;padding:10px 16px;text-decoration:none;border-radius:999px;font-weight:600;font-size:12px;">Open children list</a>
+                </div>
+                <div style="font-size:12px;color:{{theme.muted}};">If the button does not work, copy and paste this URL into your browser:</div>
+                <div style="margin-top:6px;word-break:break-all;font-size:12px;color:{{theme.text}};">{{listUrl}}</div>
+              {{/if}}
+            {{/if}}
+          </div>
+          <div style="padding:16px 22px;border-top:1px solid {{theme.border}};font-size:12px;color:{{theme.muted}};">
+            <div>Need help? Reply to this email.</div>
+            <div style="margin-top:8px;">— {{brandName}}</div>
+          </div>
+        </div>
+      </div>
     </div>
-    {{#if actionsText}}
-      <p style="margin: 8px 0;">If the button does not work, copy and paste a URL into your browser:</p>
-      <pre style="white-space: pre-wrap; word-break: break-word;">{{actionsText}}</pre>
-    {{/if}}
-  {{else}}
-    <p style="margin: 16px 0;">
-      <a href="{{listUrl}}" style="background:#2563eb;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;">
-        Open children list
-      </a>
-    </p>
-    <p>If the button does not work, copy and paste this URL into your browser:</p>
-    <p style="word-break: break-all;">{{listUrl}}</p>
-  {{/if}}
-
-  <p style="margin-top:24px;">Thank you,<br/>LRC Jeunesse</p>
-</body>
+  </body>
 </html>
-

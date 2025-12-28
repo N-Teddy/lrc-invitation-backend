@@ -25,13 +25,20 @@ function getValue(data: Record<string, any>, keyPath: string) {
 }
 
 function renderIfBlocks(template: string, data: Record<string, any>) {
-    return template.replace(
-        /{{#if\s+([a-zA-Z0-9_.]+)\s*}}([\s\S]*?){{\/if}}/g,
-        (_match, keyPath: string, inner: string) => {
-            const value = getValue(data, keyPath);
-            return value ? inner : '';
-        },
-    );
+    const ifBlock = /{{#if\s+([a-zA-Z0-9_.]+)\s*}}([\s\S]*?)(?:{{else}}([\s\S]*?))?{{\/if}}/g;
+    let output = template;
+    let prev = '';
+    while (output !== prev) {
+        prev = output;
+        output = output.replace(
+            ifBlock,
+            (_match, keyPath: string, truthy: string, falsy: string) => {
+                const value = getValue(data, keyPath);
+                return value ? truthy : (falsy ?? '');
+            },
+        );
+    }
+    return output;
 }
 
 function renderVariables(template: string, data: Record<string, any>) {

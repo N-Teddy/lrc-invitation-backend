@@ -7,13 +7,22 @@ import {
 } from '../common/interfaces/notification-sender.interface';
 import { AppConfigService } from '../config/app-config.service';
 import { renderEmailTemplate } from '../common/utils/template.util';
+import { SettingsService } from '../settings/settings.service';
+import {
+    DEFAULT_EMAIL_TEMPLATE_THEME,
+    getEmailThemeTokens,
+    isEmailTemplateTheme,
+} from '../common/constants/email-themes';
 
 @Injectable()
 export class EmailNotificationSender implements NotificationSender {
     private readonly logger = new Logger(EmailNotificationSender.name);
     private transporter?: Transporter;
 
-    constructor(private readonly config: AppConfigService) {}
+    constructor(
+        private readonly config: AppConfigService,
+        private readonly settingsService: SettingsService,
+    ) {}
 
     private getTransporter(): Transporter {
         if (this.transporter) return this.transporter;
@@ -69,7 +78,44 @@ export class EmailNotificationSender implements NotificationSender {
                     headline: subject,
                     message: options.message,
                 } as Record<string, any>);
-            const html = renderEmailTemplate(templateName, templateData);
+            let themeId = DEFAULT_EMAIL_TEMPLATE_THEME;
+            try {
+                const themeSetting = await this.settingsService.getEmailTemplateTheme();
+                if (isEmailTemplateTheme(themeSetting.theme)) {
+                    themeId = themeSetting.theme;
+                }
+            } catch {
+                themeId = DEFAULT_EMAIL_TEMPLATE_THEME;
+            }
+            const theme = getEmailThemeTokens(themeId);
+
+            const payload: Record<string, any> = {
+                ...templateData,
+                subject: templateData.subject ?? subject,
+                headline: templateData.headline ?? subject,
+                brandName: templateData.brandName ?? 'LRC Jeunesse',
+                theme,
+            };
+
+            if (Array.isArray(payload.actions) && payload.actions.length) {
+                payload.actionsHtml = payload.actions
+                    .map(
+                        (a: { url: string; label: string }) =>
+                            `<a href="${a.url}" style="display:inline-block;margin:6px 8px 6px 0;background:${theme.primary};color:#fff;padding:10px 16px;text-decoration:none;border-radius:999px;font-weight:600;font-size:12px;">${a.label}</a>`,
+                    )
+                    .join('');
+                if (!payload.actionsText) {
+                    payload.actionsText = payload.actions
+                        .map((a: { url: string; label: string }) => `${a.label}: ${a.url}`)
+                        .join('\n');
+                }
+                if (payload.actions.length === 1) {
+                    payload.actionUrl = payload.actionUrl ?? payload.actions[0].url;
+                    payload.actionLabel = payload.actionLabel ?? payload.actions[0].label;
+                }
+            }
+
+            const html = renderEmailTemplate(templateName, payload);
 
             await transporter.sendMail({
                 from,

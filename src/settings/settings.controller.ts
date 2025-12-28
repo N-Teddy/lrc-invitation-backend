@@ -10,6 +10,7 @@ import {
     SetNotificationRecipientsRequestDto,
     LockActivityYearRequestDto,
     SetAuthModeRequestDto,
+    SetEmailTemplateThemeRequestDto,
 } from '../dtos/request/settings.dto';
 import {
     AgeToGroupMappingResponseDto,
@@ -19,6 +20,7 @@ import {
     NotificationRecipientsResponseDto,
     ActivityYearLocksResponseDto,
     AuthModeSettingsResponseDto,
+    EmailTemplateThemeResponseDto,
 } from '../dtos/response/settings.dto';
 import { SettingsService } from './settings.service';
 
@@ -124,5 +126,19 @@ export class SettingsController {
     @ApiOkResponse({ type: AuthModeSettingsResponseDto })
     setAuthMode(@Body() dto: SetAuthModeRequestDto) {
         return this.settingsService.setAuthMode(dto.mode);
+    }
+
+    @Roles([UserRole.Monitor])
+    @Get('email-template')
+    @ApiOkResponse({ type: EmailTemplateThemeResponseDto })
+    getEmailTemplateTheme() {
+        return this.settingsService.getEmailTemplateTheme();
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Super])
+    @Put('email-template')
+    @ApiOkResponse({ type: EmailTemplateThemeResponseDto })
+    setEmailTemplateTheme(@Body() dto: SetEmailTemplateThemeRequestDto) {
+        return this.settingsService.setEmailTemplateTheme(dto.theme);
     }
 }

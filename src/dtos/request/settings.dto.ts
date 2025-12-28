@@ -129,3 +129,9 @@ export class SetAuthModeRequestDto {
     @IsIn(['magic_link', 'direct_email'])
     mode: 'magic_link' | 'direct_email';
 }
+
+export class SetEmailTemplateThemeRequestDto {
+    @ApiProperty({ enum: ['golden', 'cobalt', 'tide'] })
+    @IsIn(['golden', 'cobalt', 'tide'])
+    theme: 'golden' | 'cobalt' | 'tide';
+}

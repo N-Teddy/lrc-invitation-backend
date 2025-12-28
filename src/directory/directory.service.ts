@@ -38,7 +38,14 @@ export class DirectoryService {
 
         const users = await this.userModel
             .find(mongoQuery)
-            .select({ _id: 1, fullName: 1, originTown: 1, monitorLevel: 1, profileImage: 1 })
+            .select({
+                _id: 1,
+                fullName: 1,
+                originTown: 1,
+                monitorLevel: 1,
+                profileImage: 1,
+                dateOfBirth: 1,
+            })
             .sort({ fullName: 1 })
             .limit(limit)
             .lean()
@@ -50,6 +57,7 @@ export class DirectoryService {
             originTown: u.originTown,
             monitorLevel: u.monitorLevel,
             profileImageUrl: u.profileImage?.url,
+            dateOfBirth: u.dateOfBirth,
         }));
     }
 }

@@ -51,7 +51,13 @@ export class AppConfigService {
     get apiBaseUrl(): string {
         const configured = this.configService.get<string>('API_BASE_URL');
         if (configured) return configured.replace(/\/$/, '');
-        return `${this.appBaseUrl.replace(/\/$/, '')}/api`;
+        const base = this.appBaseUrl.replace(/\/$/, '');
+        const prefix = this.configService
+            .get<string>('APP_GLOBAL_PREFIX', 'api')
+            .replace(/^\/+/, '')
+            .replace(/\/+$/, '');
+        if (!prefix) return base;
+        return `${base}/${prefix}`;
     }
 
     get storageProvider(): 'local' | 'cloudinary' {

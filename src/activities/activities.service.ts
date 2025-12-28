@@ -105,8 +105,7 @@ export class ActivitiesService {
                 }).save();
                 created.push(this.ensureYear(record.toObject()) as Activity);
             } catch (err) {
-                const message =
-                    err instanceof Error ? err.message : 'Failed to create activity';
+                const message = err instanceof Error ? err.message : 'Failed to create activity';
                 failed.push({ index, reason: message });
             }
         }

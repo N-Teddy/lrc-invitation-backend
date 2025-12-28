@@ -120,6 +120,7 @@ export class NotificationService {
 
             const updatedTemplateData: Record<string, any> = {
                 ...(templateData ?? {}),
+                actions: actionLinks,
                 actionsHtml,
                 actionsText,
             };

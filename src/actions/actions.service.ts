@@ -94,7 +94,10 @@ export class ActionsService {
             payload.contextId,
         );
 
-        const isDetails = payload.actionId === 'DETAILS' || payload.actionId === 'OPEN_PROFILE';
+        const isDetails =
+            payload.actionId === 'DETAILS' ||
+            payload.actionId === 'OPEN_PROFILE' ||
+            payload.actionId.startsWith('OPEN_');
         return this.renderResult(isDetails ? 'Opening…' : 'Action recorded.', payload.redirectUrl, {
             autoRedirect: isDetails,
         });

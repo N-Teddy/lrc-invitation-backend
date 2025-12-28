@@ -75,3 +75,8 @@ export class AuthModeSettingsResponseDto {
     @ApiProperty({ enum: ['magic_link', 'direct_email'] })
     mode: 'magic_link' | 'direct_email';
 }
+
+export class EmailTemplateThemeResponseDto {
+    @ApiProperty({ enum: ['golden', 'cobalt', 'tide'] })
+    theme: 'golden' | 'cobalt' | 'tide';
+}

@@ -13,6 +13,11 @@ import {
     NotificationRecipientsSettingsRule,
 } from '../common/interfaces/notification-recipients.interface';
 import { RecipientSelectorType } from '../common/enums/settings.enum';
+import {
+    DEFAULT_EMAIL_TEMPLATE_THEME,
+    EMAIL_TEMPLATE_THEMES,
+    type EmailTemplateThemeId,
+} from '../common/constants/email-themes';
 
 @Injectable()
 export class SettingsService implements OnModuleInit {
@@ -175,6 +180,27 @@ export class SettingsService implements OnModuleInit {
         return { mode };
     }
 
+    async getEmailTemplateTheme(): Promise<{ theme: EmailTemplateThemeId }> {
+        const value = await this.getValue<{ theme?: EmailTemplateThemeId }>(
+            SETTINGS_KEYS.EmailTemplateTheme,
+        );
+        const theme = value?.theme ?? DEFAULT_EMAIL_TEMPLATE_THEME;
+        if (!EMAIL_TEMPLATE_THEMES[theme]) {
+            return { theme: DEFAULT_EMAIL_TEMPLATE_THEME };
+        }
+        return { theme };
+    }
+
+    async setEmailTemplateTheme(
+        theme: EmailTemplateThemeId,
+    ): Promise<{ theme: EmailTemplateThemeId }> {
+        if (!EMAIL_TEMPLATE_THEMES[theme]) {
+            throw new BadRequestException('Invalid email template theme');
+        }
+        await this.setValue(SETTINGS_KEYS.EmailTemplateTheme, { theme });
+        return { theme };
+    }
+
     private async getValue<T>(key: string): Promise<T | undefined> {
         const doc = await this.settingsModel.findOne({ key }).lean().exec();
         return doc?.value as T | undefined;
@@ -272,6 +298,17 @@ export class SettingsService implements OnModuleInit {
                 $setOnInsert: {
                     key: SETTINGS_KEYS.AuthMode,
                     value: { mode: this.config.authMode },
+                },
+            },
+            { upsert: true },
+        );
+
+        await this.settingsModel.updateOne(
+            { key: SETTINGS_KEYS.EmailTemplateTheme },
+            {
+                $setOnInsert: {
+                    key: SETTINGS_KEYS.EmailTemplateTheme,
+                    value: { theme: DEFAULT_EMAIL_TEMPLATE_THEME },
                 },
             },
             { upsert: true },
