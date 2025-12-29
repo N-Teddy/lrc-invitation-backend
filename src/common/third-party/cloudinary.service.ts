@@ -44,4 +44,24 @@ export class CloudinaryService {
             updatedAt: new Date(),
         };
     }
+
+    async deleteImage(publicId: string) {
+        const cloudName = this.config.cloudinaryCloudName;
+        const apiKey = this.config.cloudinaryApiKey;
+        const apiSecret = this.config.cloudinaryApiSecret;
+        if (!cloudName || !apiKey || !apiSecret) {
+            throw new BadRequestException('Cloudinary is not configured');
+        }
+
+        let cloudinaryMod: any;
+        try {
+            cloudinaryMod = await import('cloudinary');
+        } catch {
+            throw new BadRequestException('Cloudinary dependency is not installed');
+        }
+        const cloudinary = cloudinaryMod.v2 ?? cloudinaryMod;
+        cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+
+        await cloudinary.uploader.destroy(publicId, { resource_type: 'image' });
+    }
 }

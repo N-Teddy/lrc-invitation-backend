@@ -12,6 +12,7 @@ import { CreateUserData, UpdateUserData } from '../common/interfaces/user-data.i
 import { v4 as uuidv4 } from 'uuid';
 import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
 import { Town } from '../common/enums/activity.enum';
+import { MediaService } from '../media/media.service';
 
 @Injectable()
 export class UsersService {
@@ -19,6 +20,7 @@ export class UsersService {
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
         @InjectModel(MonitorProfile.name)
         private readonly monitorProfileModel: Model<MonitorProfileDocument>,
+        private readonly mediaService: MediaService,
     ) {}
 
     async create(data: CreateUserData): Promise<Record<string, any>> {
@@ -234,6 +236,11 @@ export class UsersService {
     }
 
     async updateProfileImage(userId: string, profileImage: Record<string, any>) {
+        const existing = await this.userModel.findById(userId).lean().exec();
+        if (!existing) {
+            throw new NotFoundException('User not found');
+        }
+
         const user = await this.userModel
             .findByIdAndUpdate(userId, { $set: { profileImage } }, { new: true })
             .lean()
@@ -241,6 +248,16 @@ export class UsersService {
         if (!user) {
             throw new NotFoundException('User not found');
         }
+
+        const oldImage = existing.profileImage as { url?: string; provider?: string; publicId?: string } | undefined;
+        if (oldImage?.url && oldImage.url !== profileImage.url) {
+            try {
+                await this.mediaService.deleteProfileImage(oldImage);
+            } catch {
+                // Ignore cleanup errors to avoid blocking profile updates.
+            }
+        }
+
         return this.normalizeUser(user);
     }
 

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { mkdir, writeFile } from 'fs/promises';
-import { extname, join } from 'path';
+import { mkdir, unlink, writeFile } from 'fs/promises';
+import { basename, extname, join } from 'path';
 import { AppConfigService } from '../config/app-config.service';
 import { CloudinaryService } from '../common/third-party/cloudinary.service';
 import { UploadedFile } from '../common/interfaces/uploaded-file.interface';
@@ -41,6 +41,22 @@ export class MediaService {
         return this.saveLocal(file);
     }
 
+    async deleteProfileImage(profileImage?: { provider?: string; url?: string; publicId?: string }) {
+        if (!profileImage?.url && !profileImage?.publicId) return;
+
+        if (profileImage.provider === 'cloudinary' && profileImage.publicId) {
+            await this.cloudinaryService.deleteImage(profileImage.publicId);
+            return;
+        }
+
+        if (profileImage.provider === 'local' && profileImage.url) {
+            const filename = this.extractLocalFilename(profileImage.url);
+            if (!filename) return;
+            const filepath = join(process.cwd(), this.config.uploadsDir, 'profile-images', filename);
+            await unlink(filepath);
+        }
+    }
+
     private async saveLocal(file: UploadedFile) {
         const uploadsDir = join(process.cwd(), this.config.uploadsDir, 'profile-images');
         await mkdir(uploadsDir, { recursive: true });
@@ -65,5 +81,14 @@ export class MediaService {
         if (fromName) return fromName;
         const m = file.mimetype.split('/')[1] ?? 'jpg';
         return `.${m}`;
+    }
+
+    private extractLocalFilename(url: string): string | null {
+        try {
+            const parsed = new URL(url);
+            return basename(parsed.pathname);
+        } catch {
+            return basename(url);
+        }
     }
 }

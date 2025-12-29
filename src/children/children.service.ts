@@ -480,12 +480,23 @@ export class ChildrenService {
 
         await this.assertCanManageChild(currentUser, child);
 
+        const oldImage = child.profileImage as
+            | { url?: string; provider?: string; publicId?: string }
+            | undefined;
         const profileImage = await this.mediaService.uploadProfileImage(file);
         const updated = await this.userModel
             .findByIdAndUpdate(childId, { $set: { profileImage } }, { new: true })
             .lean()
             .exec();
         if (!updated) throw new NotFoundException('Child not found');
+
+        if (oldImage?.url && oldImage.url !== profileImage.url) {
+            try {
+                await this.mediaService.deleteProfileImage(oldImage);
+            } catch {
+                // Ignore cleanup errors to avoid blocking profile updates.
+            }
+        }
 
         const profile = await this.childProfileModel.findOne({ userId: updated._id }).lean().exec();
         return {
