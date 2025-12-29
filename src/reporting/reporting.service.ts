@@ -696,6 +696,85 @@ export class ReportingService {
         }
     }
 
+    async warnMissingAttendance(now = new Date()) {
+        const tz = 'Africa/Douala';
+        const lookbackDays = 7;
+        const windowStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+
+        const activities = await this.activityModel
+            .find({
+                endDate: { $lt: now, $gte: windowStart },
+            })
+            .select({ _id: 1, type: 1, town: 1, endDate: 1 })
+            .lean()
+            .exec();
+
+        if (!activities.length) return;
+
+        const ids = activities.map((a) => a._id);
+        const attendanceDocs = await this.attendanceModel
+            .find({
+                activityId: { $in: ids },
+                takenAt: { $exists: true, $ne: null },
+            })
+            .select({ activityId: 1 })
+            .lean()
+            .exec();
+
+        const attendanceByActivity = new Set(
+            attendanceDocs.map((doc) => String(doc.activityId)),
+        );
+
+        for (const activity of activities) {
+            const activityId = String(activity._id);
+            if (attendanceByActivity.has(activityId)) continue;
+
+            const shouldRun = await this.jobRuns.tryStart('attendance_missing', activityId, {
+                endDate: activity.endDate,
+            });
+            if (!shouldRun) continue;
+
+            const endLabel = activity.endDate
+                ? formatMonthDayYear(new Date(activity.endDate), tz)
+                : '-';
+            const subject = `Attendance missing for ${activity.type} (${activity.town})`;
+            const message =
+                `Attendance has not been saved for ${activity.type} in ${activity.town}. ` +
+                `Ended ${endLabel}.`;
+            const detailsUrl = `${this.config.frontendBaseUrl}/activities/${activityId}/attendance`;
+            const recipients = await this.recipientsResolver.resolve(
+                'attendance_missing',
+                activity.town as Town,
+            );
+
+            for (const recipient of recipients) {
+                const to = recipient.email ?? recipient.phoneE164;
+                if (!to) continue;
+                await this.notificationService.send({
+                    userId: recipient.userId,
+                    to,
+                    subject,
+                    message,
+                    templateName: 'generic-notification',
+                    templateData: {
+                        subject,
+                        headline: subject,
+                        message,
+                    },
+                    actions: [
+                        {
+                            id: 'OPEN_ATTENDANCE',
+                            label: 'Open attendance',
+                            redirectUrl: detailsUrl,
+                        },
+                    ],
+                    contextType: NotificationContextType.Activity,
+                    contextId: activityId,
+                });
+            }
+        }
+    }
+
     private async assertCanReadActivityReports(
         activity: Record<string, any>,
         currentUser: Record<string, any>,

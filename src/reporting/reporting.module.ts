@@ -11,6 +11,7 @@ import { TownScopeService } from '../common/services/town-scope.service';
 import { JobsModule } from '../jobs/jobs.module';
 import { RecipientsResolverService } from '../common/services/recipients-resolver.service';
 import { TransitionsCron } from '../common/cron/transitions.cron';
+import { AttendanceWarningCron } from '../common/cron/attendance-warning.cron';
 import { AppConfigService } from '../config/app-config.service';
 
 @Module({
@@ -30,6 +31,7 @@ import { AppConfigService } from '../config/app-config.service';
         TownScopeService,
         RecipientsResolverService,
         TransitionsCron,
+        AttendanceWarningCron,
         AppConfigService,
     ],
     exports: [ReportingService],
