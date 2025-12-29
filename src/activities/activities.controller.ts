@@ -7,6 +7,7 @@ import { MonitorLevel, UserRole } from '../common/enums/user.enum';
 import {
     CreateActivityDto,
     BulkCreateActivitiesDto,
+    CancelActivityDto,
     UpdateActivityDto,
     UpdateActivityInvitationsDto,
 } from '../dtos/request/activity.dto';
@@ -88,6 +89,24 @@ export class ActivitiesController {
     @ApiOkResponse()
     remove(@Param('id') id: string, @CurrentUser() currentUser: any) {
         return this.activitiesService.remove(id, currentUser);
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])
+    @Post(':id/cancel')
+    @ApiOkResponse({ type: ActivityResponseDto })
+    cancel(
+        @Param('id') id: string,
+        @Body() dto: CancelActivityDto,
+        @CurrentUser() currentUser: any,
+    ) {
+        return this.activitiesService.cancel(id, dto, currentUser);
+    }
+
+    @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])
+    @Post(':id/reopen')
+    @ApiOkResponse({ type: ActivityResponseDto })
+    reopen(@Param('id') id: string, @CurrentUser() currentUser: any) {
+        return this.activitiesService.reopen(id, currentUser);
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Official, MonitorLevel.Super])

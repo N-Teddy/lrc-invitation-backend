@@ -9,6 +9,7 @@ import { Model, Types } from 'mongoose';
 import {
     CreateActivityDto,
     BulkCreateActivitiesDto,
+    CancelActivityDto,
     UpdateActivityDto,
     UpdateActivityInvitationsDto,
 } from '../dtos/request/activity.dto';
@@ -202,8 +203,80 @@ export class ActivitiesService {
         const existing = await this.findOneOrFail(id);
         const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
         await this.assertCanEdit(existing, currentUser, userTown);
+        if ((existing as any).ended) {
+            const attendance = await this.attendanceModel
+                .findOne({ activityId: new Types.ObjectId(id) })
+                .select({ takenAt: 1 })
+                .lean()
+                .exec();
+            if (attendance?.takenAt) {
+                throw new BadRequestException(
+                    'Past activities with attendance cannot be deleted',
+                );
+            }
+        }
         await this.activityModel.findByIdAndDelete(id).exec();
         return { deleted: true };
+    }
+
+    async cancel(id: string, dto: CancelActivityDto, currentUser: Record<string, any>) {
+        const existing = await this.findOneOrFail(id);
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        await this.assertCanEdit(existing, currentUser, userTown);
+
+        const reason = dto.reason?.trim();
+        if (!reason) throw new BadRequestException('Cancel reason is required');
+        if ((existing as any).ended) {
+            throw new BadRequestException('Past activities cannot be canceled');
+        }
+
+        const alreadyCanceled = !!(existing as any).canceledAt;
+        if (alreadyCanceled) return existing;
+
+        const canceledByUserId = currentUser?._id ?? currentUser?.id;
+        const updated = await this.activityModel
+            .findByIdAndUpdate(
+                id,
+                {
+                    $set: {
+                        canceledAt: new Date(),
+                        canceledReason: reason,
+                        canceledByUserId: canceledByUserId
+                            ? new Types.ObjectId(String(canceledByUserId))
+                            : undefined,
+                    },
+                },
+                { new: true },
+            )
+            .lean()
+            .exec();
+        if (!updated) throw new NotFoundException('Activity not found');
+        return this.ensureYear(updated);
+    }
+
+    async reopen(id: string, currentUser: Record<string, any>) {
+        const existing = await this.findOneOrFail(id);
+        const userTown = await this.townScopeService.resolveMonitorTown(currentUser);
+        await this.assertCanEdit(existing, currentUser, userTown);
+
+        if (!(existing as any).canceledAt) return existing;
+
+        const updated = await this.activityModel
+            .findByIdAndUpdate(
+                id,
+                {
+                    $unset: {
+                        canceledAt: 1,
+                        canceledReason: 1,
+                        canceledByUserId: 1,
+                    },
+                },
+                { new: true },
+            )
+            .lean()
+            .exec();
+        if (!updated) throw new NotFoundException('Activity not found');
+        return this.ensureYear(updated);
     }
 
     async regenerateInvitations(id: string, currentUser: Record<string, any>) {
@@ -260,6 +333,9 @@ export class ActivitiesService {
     }
 
     private assertInvitationsNotLocked(activity: Record<string, any>, now: Date) {
+        if (activity?.canceledAt) {
+            throw new ForbiddenException('Invitations are locked after activity is cancelled');
+        }
         const end = new Date(activity.endDate);
         const nowKey = startOfDayKey(now);
         const endKey = startOfDayKey(end);

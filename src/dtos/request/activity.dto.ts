@@ -9,6 +9,7 @@ import {
     IsString,
     IsInt,
     Min,
+    MinLength,
     ValidateNested,
 } from 'class-validator';
 import { ActivityType, TargetingCode, Town } from '../../common/enums/activity.enum';
@@ -83,4 +84,11 @@ export class BulkCreateActivitiesDto {
     @ValidateNested({ each: true })
     @Type(() => CreateActivityDto)
     activities: CreateActivityDto[];
+}
+
+export class CancelActivityDto {
+    @ApiProperty({ description: 'Reason for canceling the activity.' })
+    @IsString()
+    @MinLength(3)
+    reason: string;
 }

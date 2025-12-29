@@ -45,6 +45,15 @@ export class ActivityResponseDto {
     notes?: string;
 
     @ApiPropertyOptional()
+    canceledReason?: string;
+
+    @ApiPropertyOptional()
+    canceledAt?: Date;
+
+    @ApiPropertyOptional()
+    canceledByUserId?: string;
+
+    @ApiPropertyOptional()
     createdAt?: Date;
 
     @ApiPropertyOptional()

@@ -41,6 +41,15 @@ export class Activity {
 
     @Prop()
     notes?: string;
+
+    @Prop()
+    canceledReason?: string;
+
+    @Prop()
+    canceledAt?: Date;
+
+    @Prop({ type: Types.ObjectId, ref: 'User' })
+    canceledByUserId?: Types.ObjectId;
 }
 
 export const ActivitySchema = SchemaFactory.createForClass(Activity);
