@@ -25,6 +25,13 @@ type BirthdayPerson = {
     dateOfBirth: Date;
 };
 
+type BirthdayMonitorSnapshot = {
+    id: string;
+    fullName: string;
+    originTown?: Town;
+    profileImage?: { url?: string };
+};
+
 @Injectable()
 export class BirthdaysService {
     private readonly logger = new Logger(BirthdaysService.name);
@@ -225,5 +232,31 @@ export class BirthdaysService {
         }
 
         return { text: lines.join('\n').trim(), html: htmlLines.join('\n') };
+    }
+
+    async getTodayMonitorBirthdays(now = new Date()): Promise<BirthdayMonitorSnapshot[]> {
+        const { month, day } = getDatePartsInTimeZone(now, TZ);
+        const docs = await this.userModel
+            .find({
+                lifecycleStatus: LifecycleStatus.Active,
+                role: UserRole.Monitor,
+                dateOfBirth: { $ne: null },
+                $expr: {
+                    $and: [
+                        { $eq: [{ $month: '$dateOfBirth' }, month] },
+                        { $eq: [{ $dayOfMonth: '$dateOfBirth' }, day] },
+                    ],
+                },
+            })
+            .select({ _id: 1, fullName: 1, originTown: 1, profileImage: 1 })
+            .lean()
+            .exec();
+
+        return docs.map((u) => ({
+            id: String(u._id),
+            fullName: u.fullName,
+            originTown: u.originTown as Town | undefined,
+            profileImage: u.profileImage ? { url: u.profileImage.url } : undefined,
+        }));
     }
 }
