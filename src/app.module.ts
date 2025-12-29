@@ -20,6 +20,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { InteractionsModule } from './interactions/interactions.module';
 import { ChildrenModule } from './children/children.module';
 import { DirectoryModule } from './directory/directory.module';
+import { MonitorLevelChangesModule } from './monitor-level-changes/monitor-level-changes.module';
 
 @Module({
     imports: [
@@ -51,6 +52,7 @@ import { DirectoryModule } from './directory/directory.module';
         ConversationsModule,
         ActionsModule,
         InteractionsModule,
+        MonitorLevelChangesModule,
     ],
     controllers: [AppController],
     providers: [AppService],

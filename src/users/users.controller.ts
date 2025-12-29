@@ -86,7 +86,10 @@ export class UsersController {
         if (!isSelf && !isSuper) {
             throw new ForbiddenException('Not allowed');
         }
-        return this.usersService.update(id, dto);
+        if (dto.monitorLevel !== undefined && !isSuper) {
+            throw new ForbiddenException('Only Super Monitors can change monitor level');
+        }
+        return this.usersService.update(id, dto, currentUser);
     }
 
     @Roles([UserRole.Monitor])

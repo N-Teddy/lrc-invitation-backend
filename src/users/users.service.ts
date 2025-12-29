@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../schema/user.schema';
 import { MonitorProfile, MonitorProfileDocument } from '../schema/monitor-profile.schema';
+import { MonitorLevelChange, MonitorLevelChangeDocument } from '../schema/monitor-level-change.schema';
 import { CreateUserData, UpdateUserData } from '../common/interfaces/user-data.interface';
 import { v4 as uuidv4 } from 'uuid';
 import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
@@ -20,6 +21,8 @@ export class UsersService {
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
         @InjectModel(MonitorProfile.name)
         private readonly monitorProfileModel: Model<MonitorProfileDocument>,
+        @InjectModel(MonitorLevelChange.name)
+        private readonly monitorLevelChangeModel: Model<MonitorLevelChangeDocument>,
         private readonly mediaService: MediaService,
     ) {}
 
@@ -197,7 +200,16 @@ export class UsersService {
         return user;
     }
 
-    async update(id: string, data: UpdateUserData): Promise<Record<string, any>> {
+    async update(
+        id: string,
+        data: UpdateUserData,
+        currentUser?: Record<string, any>,
+    ): Promise<Record<string, any>> {
+        const existing = await this.userModel.findById(id).lean().exec();
+        if (!existing) {
+            throw new NotFoundException('User not found');
+        }
+
         const user = await this.userModel
             .findByIdAndUpdate(
                 id,
@@ -217,9 +229,6 @@ export class UsersService {
             )
             .lean()
             .exec();
-        if (!user) {
-            throw new NotFoundException('User not found');
-        }
 
         if (user.role === UserRole.Monitor && (data.homeTown || data.originTown)) {
             const town = (data.homeTown ?? data.originTown) as Town;
@@ -230,6 +239,32 @@ export class UsersService {
                     { upsert: true },
                 )
                 .exec();
+        }
+
+        if (
+            user.role === UserRole.Monitor &&
+            data.monitorLevel !== undefined &&
+            data.monitorLevel !== existing.monitorLevel
+        ) {
+            const changedByUserId = currentUser?._id ?? currentUser?.id;
+            await this.monitorProfileModel
+                .updateOne(
+                    { userId: new Types.ObjectId(String(id)) },
+                    { $set: { level: data.monitorLevel } },
+                    { upsert: true },
+                )
+                .exec();
+
+            await this.monitorLevelChangeModel
+                .create({
+                    userId: new Types.ObjectId(String(id)),
+                    oldLevel: existing.monitorLevel,
+                    newLevel: data.monitorLevel,
+                    changedByUserId: changedByUserId
+                        ? new Types.ObjectId(String(changedByUserId))
+                        : undefined,
+                })
+                .catch(() => undefined);
         }
 
         return this.normalizeUser(user);

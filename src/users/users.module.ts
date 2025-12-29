@@ -4,6 +4,7 @@ import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { User, UserSchema } from '../schema/user.schema';
 import { MonitorProfile, MonitorProfileSchema } from '../schema/monitor-profile.schema';
+import { MonitorLevelChange, MonitorLevelChangeSchema } from '../schema/monitor-level-change.schema';
 import { MediaModule } from '../media/media.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AppConfigService } from '../config/app-config.service';
@@ -13,6 +14,7 @@ import { AppConfigService } from '../config/app-config.service';
         MongooseModule.forFeature([
             { name: User.name, schema: UserSchema },
             { name: MonitorProfile.name, schema: MonitorProfileSchema },
+            { name: MonitorLevelChange.name, schema: MonitorLevelChangeSchema },
         ]),
         MediaModule,
         NotificationsModule,
