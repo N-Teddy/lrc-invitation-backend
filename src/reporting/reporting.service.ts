@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { Activity, ActivityDocument } from '../schema/activity.schema';
 import { Attendance, AttendanceDocument } from '../schema/attendance.schema';
 import { User, UserDocument } from '../schema/user.schema';
+import { MonitorProfile, MonitorProfileDocument } from '../schema/monitor-profile.schema';
 import { ActivityType, Town } from '../common/enums/activity.enum';
 import { AttendanceRoleAtTime } from '../common/enums/attendance.enum';
 import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';
@@ -39,6 +40,8 @@ export class ReportingService {
         @InjectModel(Attendance.name)
         private readonly attendanceModel: Model<AttendanceDocument>,
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+        @InjectModel(MonitorProfile.name)
+        private readonly monitorProfileModel: Model<MonitorProfileDocument>,
         private readonly notificationService: NotificationService,
         private readonly townScopeService: TownScopeService,
         private readonly recipientsResolver: RecipientsResolverService,
@@ -700,6 +703,8 @@ export class ReportingService {
         const tz = 'Africa/Douala';
         const lookbackDays = 7;
         const windowStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+        const today = getDatePartsInTimeZone(now, tz);
+        const todayKey = `${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`;
 
         const activities = await this.activityModel
             .find({
@@ -721,17 +726,20 @@ export class ReportingService {
             .lean()
             .exec();
 
-        const attendanceByActivity = new Set(
-            attendanceDocs.map((doc) => String(doc.activityId)),
-        );
+        const attendanceByActivity = new Set(attendanceDocs.map((doc) => String(doc.activityId)));
 
         for (const activity of activities) {
             const activityId = String(activity._id);
             if (attendanceByActivity.has(activityId)) continue;
 
-            const shouldRun = await this.jobRuns.tryStart('attendance_missing', activityId, {
-                endDate: activity.endDate,
-            });
+            const shouldRun = await this.jobRuns.tryStart(
+                'attendance_missing',
+                `${activityId}:${todayKey}`,
+                {
+                    endDate: activity.endDate,
+                    today: todayKey,
+                },
+            );
             if (!shouldRun) continue;
 
             const endLabel = activity.endDate
@@ -742,16 +750,44 @@ export class ReportingService {
                 `Attendance has not been saved for ${activity.type} in ${activity.town}. ` +
                 `Ended ${endLabel}.`;
             const detailsUrl = `${this.config.frontendBaseUrl}/activities/${activityId}/attendance`;
-            const recipients = await this.recipientsResolver.resolve(
-                'attendance_missing',
-                activity.town as Town,
+            const town = activity.town as Town;
+            const townProfiles = await this.monitorProfileModel
+                .find({ homeTown: town })
+                .select({ userId: 1 })
+                .lean()
+                .exec();
+            const townIds = townProfiles.map((p) => p.userId);
+            const originTownUsers = await this.userModel
+                .find({
+                    role: UserRole.Monitor,
+                    originTown: town,
+                    lifecycleStatus: LifecycleStatus.Active,
+                })
+                .select({ _id: 1 })
+                .lean()
+                .exec();
+            const originTownIds = originTownUsers.map((u) => u._id);
+            const ids = [...new Set([...townIds, ...originTownIds].map((id) => String(id)))].map(
+                (id) => new Types.ObjectId(id),
             );
+            if (!ids.length) continue;
+
+            const recipients = await this.userModel
+                .find({
+                    _id: { $in: ids },
+                    role: UserRole.Monitor,
+                    lifecycleStatus: LifecycleStatus.Active,
+                    registrationPendingApproval: false,
+                })
+                .select({ _id: 1, email: 1, whatsApp: 1 })
+                .lean()
+                .exec();
 
             for (const recipient of recipients) {
-                const to = recipient.email ?? recipient.phoneE164;
+                const to = recipient.email ?? recipient.whatsApp?.phoneE164;
                 if (!to) continue;
                 await this.notificationService.send({
-                    userId: recipient.userId,
+                    userId: String(recipient._id),
                     to,
                     subject,
                     message,

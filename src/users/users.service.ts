@@ -249,7 +249,9 @@ export class UsersService {
             throw new NotFoundException('User not found');
         }
 
-        const oldImage = existing.profileImage as { url?: string; provider?: string; publicId?: string } | undefined;
+        const oldImage = existing.profileImage as
+            | { url?: string; provider?: string; publicId?: string }
+            | undefined;
         if (oldImage?.url && oldImage.url !== profileImage.url) {
             try {
                 await this.mediaService.deleteProfileImage(oldImage);

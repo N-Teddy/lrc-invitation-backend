@@ -41,7 +41,11 @@ export class MediaService {
         return this.saveLocal(file);
     }
 
-    async deleteProfileImage(profileImage?: { provider?: string; url?: string; publicId?: string }) {
+    async deleteProfileImage(profileImage?: {
+        provider?: string;
+        url?: string;
+        publicId?: string;
+    }) {
         if (!profileImage?.url && !profileImage?.publicId) return;
 
         if (profileImage.provider === 'cloudinary' && profileImage.publicId) {
@@ -58,7 +62,12 @@ export class MediaService {
             if (!isLocal) return;
             const filename = this.extractLocalFilename(profileImage.url);
             if (!filename) return;
-            const filepath = join(process.cwd(), this.config.uploadsDir, 'profile-images', filename);
+            const filepath = join(
+                process.cwd(),
+                this.config.uploadsDir,
+                'profile-images',
+                filename,
+            );
             await unlink(filepath);
         }
     }

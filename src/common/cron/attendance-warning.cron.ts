@@ -15,9 +15,7 @@ export class AttendanceWarningCron implements OnModuleInit {
                 try {
                     await this.reportingService.warnMissingAttendance(new Date());
                 } catch (err) {
-                    this.logger.error(
-                        `Attendance warning job failed: ${err?.message ?? err}`,
-                    );
+                    this.logger.error(`Attendance warning job failed: ${err?.message ?? err}`);
                 }
             },
             { initialDelayMs: 10_000 },

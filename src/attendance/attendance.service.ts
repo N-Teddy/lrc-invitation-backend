@@ -90,7 +90,7 @@ export class AttendanceService {
             .lean()
             .exec();
 
-        this.assertNotLocked(activity, now);
+        this.assertNotLocked(activity, now, existing);
 
         const allowedLabels = (await this.settingsService.getClassificationLabels())
             .labels as ClassificationLabel[];
@@ -517,7 +517,7 @@ export class AttendanceService {
             .sort((a: any, b: any) => a.fullName.localeCompare(b.fullName));
 
         const now = new Date();
-        const lockReason = this.getLockReason(activity, now);
+        const lockReason = this.getLockReason(activity, now, attendance);
         const locked = !!lockReason;
 
         const externalParticipants = (relevantExternalEntries ?? []).map((x: any) => ({
@@ -690,7 +690,11 @@ export class AttendanceService {
         return userTown;
     }
 
-    private getLockReason(activity: Record<string, any>, now: Date): string | undefined {
+    private getLockReason(
+        activity: Record<string, any>,
+        now: Date,
+        attendance?: { takenAt?: Date },
+    ): string | undefined {
         const start = new Date(activity.startDate);
         const end = new Date(activity.endDate);
 
@@ -701,17 +705,21 @@ export class AttendanceService {
         if (nowKey < startKey) {
             return 'Attendance can only be taken on the day(s) of the activity';
         }
-        if (nowKey > endKey) {
+        if (nowKey > endKey && attendance?.takenAt) {
             return 'Attendance is locked after activity ends';
         }
-        if (now > end) {
+        if (now > end && attendance?.takenAt) {
             return 'Attendance is locked after activity ends';
         }
         return undefined;
     }
 
-    private assertNotLocked(activity: Record<string, any>, now: Date) {
-        const reason = this.getLockReason(activity, now);
+    private assertNotLocked(
+        activity: Record<string, any>,
+        now: Date,
+        attendance?: { takenAt?: Date },
+    ) {
+        const reason = this.getLockReason(activity, now, attendance);
         if (!reason) return;
         throw new ForbiddenException(reason);
     }
