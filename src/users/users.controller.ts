@@ -65,17 +65,27 @@ export class UsersController {
         });
     }
 
-    @Roles([UserRole.Monitor], [MonitorLevel.Super])
+    @Roles([UserRole.Monitor])
     @Get(':id([0-9a-fA-F]{24})')
     @ApiOkResponse({ type: UserResponseDto })
-    findOne(@Param('id') id: string) {
+    findOne(@Param('id') id: string, @CurrentUser() currentUser: any) {
+        const isSelf = String(currentUser?.id ?? currentUser?._id) === id;
+        const isSuper = currentUser?.monitorLevel === MonitorLevel.Super;
+        if (!isSelf && !isSuper) {
+            throw new ForbiddenException('Not allowed');
+        }
         return this.usersService.findOneOrFail(id);
     }
 
-    @Roles([UserRole.Monitor], [MonitorLevel.Super])
+    @Roles([UserRole.Monitor])
     @Patch(':id([0-9a-fA-F]{24})')
     @ApiOkResponse({ type: UserResponseDto })
-    update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+    update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() currentUser: any) {
+        const isSelf = String(currentUser?.id ?? currentUser?._id) === id;
+        const isSuper = currentUser?.monitorLevel === MonitorLevel.Super;
+        if (!isSelf && !isSuper) {
+            throw new ForbiddenException('Not allowed');
+        }
         return this.usersService.update(id, dto);
     }
 
