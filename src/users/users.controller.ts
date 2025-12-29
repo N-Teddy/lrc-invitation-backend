@@ -66,14 +66,14 @@ export class UsersController {
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Super])
-    @Get(':id')
+    @Get(':id([0-9a-fA-F]{24})')
     @ApiOkResponse({ type: UserResponseDto })
     findOne(@Param('id') id: string) {
         return this.usersService.findOneOrFail(id);
     }
 
     @Roles([UserRole.Monitor], [MonitorLevel.Super])
-    @Patch(':id')
+    @Patch(':id([0-9a-fA-F]{24})')
     @ApiOkResponse({ type: UserResponseDto })
     update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
         return this.usersService.update(id, dto);
