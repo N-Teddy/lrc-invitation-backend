@@ -49,7 +49,13 @@ export class MediaService {
             return;
         }
 
-        if (profileImage.provider === 'local' && profileImage.url) {
+        if (profileImage.url) {
+            const storageBase = this.config.storageBaseUrl;
+            const isLocal =
+                profileImage.provider === 'local' ||
+                (storageBase && profileImage.url.startsWith(storageBase)) ||
+                profileImage.url.includes('/profile-images/');
+            if (!isLocal) return;
             const filename = this.extractLocalFilename(profileImage.url);
             if (!filename) return;
             const filepath = join(process.cwd(), this.config.uploadsDir, 'profile-images', filename);
