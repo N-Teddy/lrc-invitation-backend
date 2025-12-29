@@ -2,7 +2,10 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UserRole } from '../common/enums/user.enum';
-import { MonitorLevelChange, MonitorLevelChangeDocument } from '../schema/monitor-level-change.schema';
+import {
+    MonitorLevelChange,
+    MonitorLevelChangeDocument,
+} from '../schema/monitor-level-change.schema';
 
 @Injectable()
 export class MonitorLevelChangesService {
@@ -11,10 +14,7 @@ export class MonitorLevelChangesService {
         private readonly monitorLevelChangeModel: Model<MonitorLevelChangeDocument>,
     ) {}
 
-    async listRecent(
-        currentUser: Record<string, any>,
-        opts?: { limit?: number; days?: number },
-    ) {
+    async listRecent(currentUser: Record<string, any>, opts?: { limit?: number; days?: number }) {
         if (currentUser?.role !== UserRole.Monitor) {
             throw new ForbiddenException('Only monitors can access level changes');
         }

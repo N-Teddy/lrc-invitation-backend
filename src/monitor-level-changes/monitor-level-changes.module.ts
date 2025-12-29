@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { MonitorLevelChange, MonitorLevelChangeSchema } from '../schema/monitor-level-change.schema';
+import {
+    MonitorLevelChange,
+    MonitorLevelChangeSchema,
+} from '../schema/monitor-level-change.schema';
 import { MonitorLevelChangesController } from './monitor-level-changes.controller';
 import { MonitorLevelChangesService } from './monitor-level-changes.service';
 

@@ -210,9 +210,7 @@ export class ActivitiesService {
                 .lean()
                 .exec();
             if (attendance?.takenAt) {
-                throw new BadRequestException(
-                    'Past activities with attendance cannot be deleted',
-                );
+                throw new BadRequestException('Past activities with attendance cannot be deleted');
             }
         }
         await this.activityModel.findByIdAndDelete(id).exec();

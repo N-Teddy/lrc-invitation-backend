@@ -8,7 +8,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../schema/user.schema';
 import { MonitorProfile, MonitorProfileDocument } from '../schema/monitor-profile.schema';
-import { MonitorLevelChange, MonitorLevelChangeDocument } from '../schema/monitor-level-change.schema';
+import {
+    MonitorLevelChange,
+    MonitorLevelChangeDocument,
+} from '../schema/monitor-level-change.schema';
 import { CreateUserData, UpdateUserData } from '../common/interfaces/user-data.interface';
 import { v4 as uuidv4 } from 'uuid';
 import { LifecycleStatus, MonitorLevel, UserRole } from '../common/enums/user.enum';

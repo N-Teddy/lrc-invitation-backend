@@ -17,6 +17,12 @@ export class MonitorLevelChange {
 
     @Prop({ type: Types.ObjectId, ref: 'User' })
     changedByUserId?: Types.ObjectId;
+
+    @Prop({ type: Date })
+    createdAt: Date;
+
+    @Prop({ type: Date })
+    updatedAt: Date;
 }
 
 export const MonitorLevelChangeSchema = SchemaFactory.createForClass(MonitorLevelChange);
